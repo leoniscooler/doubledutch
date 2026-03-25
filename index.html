@@ -3,76 +3,188 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Double Dutch — Rhythm &amp; Rope Simulator</title>
+<title>Double Dutch 3D — Third-Person Simulator</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:#0a0a1a;display:flex;justify-content:center;align-items:center;height:100vh;overflow:hidden;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;user-select:none}
-canvas{display:block}
+body{background:#000;overflow:hidden;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;user-select:none}
+canvas{display:block;width:100vw;height:100vh}
+#hud{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10}
+#hud *{pointer-events:none}
+.hud-panel{position:absolute;background:rgba(0,0,0,.55);border-radius:10px;backdrop-filter:blur(4px);padding:8px 14px;color:#fff;font-size:13px}
+#scorePanel{top:12px;left:12px}
+#scorePanel .big{font-size:28px;font-weight:bold;color:#FFD700}
+#scorePanel .combo{font-size:16px;color:#FFA500;margin-top:2px}
+#flowPanel{top:12px;right:12px;width:170px}
+#flowPanel .label{font-size:11px;color:#aaa;margin-bottom:3px}
+#flowPanel .bar{height:14px;background:rgba(255,255,255,.12);border-radius:7px;overflow:hidden}
+#flowPanel .fill{height:100%;border-radius:7px;transition:width .2s}
+#diffLabel{top:12px;left:50%;transform:translateX(-50%);font-size:11px;color:#999;background:rgba(0,0,0,.35);padding:4px 14px;border-radius:6px}
+#judgment{position:absolute;top:38%;left:50%;transform:translate(-50%,-50%);font-size:32px;font-weight:bold;text-shadow:0 0 15px currentColor;opacity:0;transition:opacity .15s}
+#centerMsg{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;color:#fff}
+#centerMsg h1{font-size:52px;text-shadow:0 0 30px rgba(255,215,0,.4)}
+#centerMsg .sub{font-size:18px;color:#ccc;margin-top:8px}
+#centerMsg .keys{font-size:13px;color:#888;margin-top:18px;line-height:1.8}
+#centerMsg .diff{margin-top:14px;font-size:15px;color:#FFD700}
+#centerMsg .diff-row{display:flex;align-items:center;justify-content:center;gap:18px;margin-top:14px}
+#centerMsg .diff-arrow{font-size:32px;color:#FFD700;cursor:pointer;pointer-events:auto;opacity:0.7;transition:opacity .15s, transform .15s;user-select:none}
+#centerMsg .diff-arrow:hover{opacity:1;transform:scale(1.25)}
+#centerMsg .diff-label{font-size:17px;color:#FFD700;min-width:160px;text-align:center}
+#timer{position:absolute;bottom:14px;right:18px;font-size:13px;color:rgba(255,255,255,.35)}
+#prompt{position:absolute;bottom:50px;left:50%;transform:translateX(-50%);font-size:15px;color:rgba(255,255,255,.5);display:none}
+#composure{top:76px;right:12px;width:170px}
+#composure .label{font-size:11px;color:#aaa;margin-bottom:3px}
+#composure .bar{height:14px;background:rgba(255,255,255,.12);border-radius:7px;overflow:hidden}
+#composure .fill{height:100%;border-radius:7px;background:linear-gradient(90deg,#3498db,#2ecc71);transition:width .2s}
+#accuracy{top:120px;right:12px;width:170px}
+#accuracy .label{font-size:11px;color:#aaa;margin-bottom:3px}
+#accuracy .bar{height:14px;background:rgba(255,255,255,.12);border-radius:7px;overflow:hidden}
+#accuracy .fill{height:100%;border-radius:7px;background:linear-gradient(90deg,#9b59b6,#e74c3c);transition:width .2s}
 </style>
 </head>
 <body>
-<canvas id="c"></canvas>
-<script>
-// ═══════════════════════════════════════════════════════════
-//  DOUBLE DUTCH — Rhythm & Rope Simulator
-//  A game that teaches Double Dutch jumping through play,
-//  honoring a tradition of rhythm, community & Black culture
-// ═══════════════════════════════════════════════════════════
+<div id="hud">
+  <div id="scorePanel" class="hud-panel" style="display:none">
+    <div class="big" id="scoreVal">0</div>
+    <div class="combo" id="comboVal"></div>
+    <div style="font-size:11px;color:#aaa;margin-top:3px">JUMPS: <span id="jumpCount">0</span></div>
+  </div>
+  <div id="flowPanel" class="hud-panel" style="display:none">
+    <div class="label">FLOW</div>
+    <div class="bar"><div class="fill" id="flowFill" style="width:50%;background:linear-gradient(90deg,#2ecc71,#f1c40f,#e74c3c)"></div></div>
+  </div>
+  <div id="composure" class="hud-panel" style="display:none">
+    <div class="label">COMPOSURE</div>
+    <div class="bar"><div class="fill" id="compFill" style="width:100%"></div></div>
+  </div>
+  <div id="accuracy" class="hud-panel" style="display:none">
+    <div class="label">RHYTHM ACCURACY</div>
+    <div class="bar"><div class="fill" id="accFill" style="width:100%"></div></div>
+  </div>
+  <div id="diffLabel" class="hud-panel" style="display:none"></div>
+  <div id="judgment"></div>
+  <div id="timer" style="display:none"></div>
+  <div id="prompt"></div>
+  <div id="centerMsg">
+    <h1>DOUBLE DUTCH 3D</h1>
+    <div class="sub">Third-Person Rhythm &amp; Rope Simulator</div>
+    <div class="diff-row">
+      <span class="diff-arrow" id="diffLeft">◀</span>
+      <span class="diff-label" id="diffDisplay">EASY · 75 BPM</span>
+      <span class="diff-arrow" id="diffRight">▶</span>
+    </div>
+    <div class="keys">
+      WASD / Arrows — Move &nbsp;|&nbsp; SPACE — Jump &nbsp;|&nbsp; Mouse — Look<br>
+      ENTER — Start
+    </div>
+  </div>
+</div>
 
-const canvas = document.getElementById('c');
-const C = canvas.getContext('2d');
-const W = 1200, H = 720;
-canvas.width = W; canvas.height = H;
-
-function resize() {
-  const s = Math.min(innerWidth / W, innerHeight / H, 1.5);
-  canvas.style.width  = ((W * s)|0) + 'px';
-  canvas.style.height = ((H * s)|0) + 'px';
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.163.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.163.0/examples/jsm/"
+  }
 }
-addEventListener('resize', resize); resize();
+</script>
 
-/* ── tiny helpers ── */
-const lerp  = (a,b,t) => a+(b-a)*t;
-const clamp = (v,lo,hi) => Math.max(lo, Math.min(hi, v));
-const ease  = t => t<.5?2*t*t:1-(-2*t+2)**2/2;
-const rand  = (a,b) => a+Math.random()*(b-a);
-const TAU   = Math.PI*2;
-const PI    = Math.PI;
-const sin   = Math.sin, cos = Math.cos, abs = Math.abs, floor = Math.floor;
+<script type="module">
+import * as THREE from 'three';
 
-/* ═══════════════════════════════════
-   CONSTANTS
-   ═══════════════════════════════════ */
-const GND        = 558;          // ground‑line y
-const ROPE_R     = 128;          // rope swing radius
-const HAND_Y     = GND - ROPE_R; // ~430  turner‑wrist height
-const TL_X       = 245;          // left turner x
-const TR_X       = 955;          // right turner x
-const CX         = (TL_X+TR_X)/2;// 600  centre
-const SEGS       = 48;           // rope sample points
-const GRAV       = 0.60;
-const JUMP_V     = -8.2;
+// ═══════════════════════════════════════════════════════════
+//  DOUBLE DUTCH 3D — Third-Person Rhythm & Rope Simulator
+//  Honoring a tradition of rhythm, community & Black culture
+// ═══════════════════════════════════════════════════════════
+
+const {Vector3, Quaternion, Euler, Color, MathUtils} = THREE;
+const lerp = MathUtils.lerp;
+const clamp = MathUtils.clamp;
+const PI = Math.PI, TAU = PI*2;
+const sin = Math.sin, cos = Math.cos, abs = Math.abs, floor = Math.floor;
+const rand = (a,b) => a+Math.random()*(b-a);
+
+// ── CONSTANTS ──
+const ROPE_SEG_COUNT = 32;    // segments per rope
+const ROPE_LENGTH    = 7.0;   // meters
+const ROPE_THICKNESS = 0.04;
+const ROPE_RADIUS    = 2.0;   // how high the rope arcs (swing radius in Y/Z)
+const TURNER_DIST    = 3.5;   // distance from center to each turner
+const JUMP_FORCE     = 4.8;
+const GRAVITY        = -14.0;
+const PLAYER_HEIGHT  = 1.7;
+const PLAYER_SPEED   = 4.0;
 
 const DIFFS = [
-  { key:'practice', label:'Practice', bpm:55,  win:.24 },
-  { key:'easy',     label:'Easy',     bpm:75,  win:.19 },
-  { key:'medium',   label:'Medium',   bpm:100, win:.14 },
-  { key:'hard',     label:'Hard',     bpm:130, win:.09 },
-  { key:'expert',   label:'Expert',   bpm:160, win:.06 }
+  {key:'practice', label:'Practice', bpm:55,  win:.24},
+  {key:'easy',     label:'Easy',     bpm:75,  win:.19},
+  {key:'medium',   label:'Medium',   bpm:100, win:.14},
+  {key:'hard',     label:'Hard',     bpm:130, win:.09},
+  {key:'expert',   label:'Expert',   bpm:160, win:.06}
 ];
 
-/* ═══════════════════════════════════
-   AUDIO  (Web Audio synthesis)
-   ═══════════════════════════════════ */
-let actx = null;
-function initAudio(){ if(!actx) actx = new (window.AudioContext||window.webkitAudioContext)(); }
+// ── GAME STATE ──
+let state = 'menu'; // menu | freeroam | jumping | tangled | score
+let dIdx = 1, diff = DIFFS[dIdx];
+let score=0, combo=0, maxCombo=0, flow=50, composure=100, accuracy=100;
+let totalJ=0, perfC=0, goodC=0;
+let jumpedBeat=false, beatFlash=0, graceBeats=0;
+const GRACE_COUNT = 4;
+let gTime=0, totalTime=0;
+let tangled=false, tangleProg=0, tangleWait=0;
+let jdg='', jdgTimer=0;
+let rAngle=0, rSpeed=0;
+let insideRopes=false;
 
-function sfx(type, vol){
+// ── DOM REFS ──
+const $score = document.getElementById('scoreVal');
+const $combo = document.getElementById('comboVal');
+const $jumps = document.getElementById('jumpCount');
+const $flowFill = document.getElementById('flowFill');
+const $compFill = document.getElementById('compFill');
+const $accFill  = document.getElementById('accFill');
+const $diffLabel = document.getElementById('diffLabel');
+const $diffDisplay = document.getElementById('diffDisplay');
+const $judgment = document.getElementById('judgment');
+const $centerMsg = document.getElementById('centerMsg');
+const $timer = document.getElementById('timer');
+const $prompt = document.getElementById('prompt');
+
+// ── INPUT ──
+const keys = {};
+const jp = {};
+let mouseDX=0, mouseDY=0;
+let pointerLocked=false;
+
+document.addEventListener('keydown', e => {
+  if(!keys[e.code]) jp[e.code]=true;
+  keys[e.code]=true;
+  initAudio();
+  if(e.code==='Space'||e.code.startsWith('Arrow')) e.preventDefault();
+});
+document.addEventListener('keyup', e => { keys[e.code]=false; });
+document.addEventListener('mousemove', e => {
+  if(pointerLocked){
+    mouseDX += e.movementX;
+    mouseDY += e.movementY;
+  }
+});
+document.addEventListener('pointerlockchange', () => {
+  pointerLocked = !!document.pointerLockElement;
+});
+
+function pressed(c){ return jp[c]===true; }
+
+// ═══════════════════════════════════
+//  AUDIO (Web Audio synthesis)
+// ═══════════════════════════════════
+let actx=null;
+function initAudio(){ if(!actx) actx=new (window.AudioContext||window.webkitAudioContext)(); }
+
+function sfx(type, vol=1){
   if(!actx) return;
-  vol = vol ?? 1;
-  const t = actx.currentTime;
-  const g = actx.createGain();
-  g.gain.value = vol * 0.3;
+  const t=actx.currentTime;
+  const g=actx.createGain();
+  g.gain.value=vol*0.3;
   g.connect(actx.destination);
 
   if(type==='slap'){
@@ -95,9 +207,10 @@ function sfx(type, vol){
     const f=actx.createBiquadFilter(); f.type='lowpass'; f.frequency.value=200;
     s.connect(f); f.connect(g); s.start();
   } else if(type==='perfect'){
-    [523,659].forEach(function(fr,i){
+    [523,659].forEach((fr,i) => {
       const o=actx.createOscillator(); o.frequency.value=fr;
-      const gg=actx.createGain(); gg.gain.setValueAtTime(.12,t+i*.04); gg.gain.exponentialRampToValueAtTime(.001,t+i*.04+.12);
+      const gg=actx.createGain(); gg.gain.setValueAtTime(.12,t+i*.04);
+      gg.gain.exponentialRampToValueAtTime(.001,t+i*.04+.12);
       o.connect(gg); gg.connect(actx.destination); o.start(t+i*.04); o.stop(t+i*.04+.12);
     });
   } else if(type==='good'){
@@ -118,991 +231,1509 @@ function sfx(type, vol){
     const g3=actx.createGain(); g3.gain.setValueAtTime(.13,t); g3.gain.exponentialRampToValueAtTime(.001,t+.4);
     o.connect(g3); g3.connect(actx.destination); o.start(t); o.stop(t+.4);
   } else if(type==='entry'){
-    [330,440,554].forEach(function(fr,i){
+    [330,440,554].forEach((fr,i) => {
       const o=actx.createOscillator(); o.frequency.value=fr;
-      const gg=actx.createGain(); gg.gain.setValueAtTime(.1, t+i*.07); gg.gain.exponentialRampToValueAtTime(.001,t+i*.07+.1);
+      const gg=actx.createGain(); gg.gain.setValueAtTime(.1,t+i*.07);
+      gg.gain.exponentialRampToValueAtTime(.001,t+i*.07+.1);
       o.connect(gg); gg.connect(actx.destination); o.start(t+i*.07); o.stop(t+i*.07+.1);
+    });
+  } else if(type==='ambient'){
+    // low city hum
+    const o=actx.createOscillator(); o.type='sine'; o.frequency.value=80;
+    g.gain.setValueAtTime(vol*.02,t); g.gain.linearRampToValueAtTime(0,t+2);
+    o.connect(g); o.start(t); o.stop(t+2);
+  }
+}
+
+// Ambient loop
+let ambientInterval=null;
+function startAmbience(){
+  if(ambientInterval) return;
+  ambientInterval = setInterval(() => { if(actx) sfx('ambient',.3); }, 3000);
+}
+
+// ═══════════════════════════════════
+//  THREE.JS SETUP
+// ═══════════════════════════════════
+const renderer = new THREE.WebGLRenderer({antialias:true, alpha:false});
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+document.body.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x1a1830, 0.012);
+
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth/window.innerHeight, 0.1, 200);
+camera.position.set(0, 3, 8);
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ── LIGHTING ── (golden hour feel)
+const ambientLight = new THREE.AmbientLight(0x554433, 0.6);
+scene.add(ambientLight);
+
+const sunLight = new THREE.DirectionalLight(0xffcc88, 2.2);
+sunLight.position.set(-15, 20, 10);
+sunLight.castShadow = true;
+sunLight.shadow.mapSize.set(2048, 2048);
+sunLight.shadow.camera.left = -25;
+sunLight.shadow.camera.right = 25;
+sunLight.shadow.camera.top = 25;
+sunLight.shadow.camera.bottom = -25;
+sunLight.shadow.camera.near = 0.5;
+sunLight.shadow.camera.far = 60;
+sunLight.shadow.bias = -0.001;
+scene.add(sunLight);
+
+const fillLight = new THREE.DirectionalLight(0x8899cc, 0.4);
+fillLight.position.set(10, 8, -5);
+scene.add(fillLight);
+
+const hemiLight = new THREE.HemisphereLight(0xdca04e, 0x383838, 0.5);
+scene.add(hemiLight);
+
+// ═══════════════════════════════════
+//  MATERIALS
+// ═══════════════════════════════════
+function mat(color, opts={}){
+  return new THREE.MeshStandardMaterial({
+    color, roughness:opts.rough??0.8, metalness:opts.metal??0.0, ...opts
+  });
+}
+
+const MAT = {
+  blacktop:  mat(0x383838, {rough:0.95}),
+  sidewalk:  mat(0x888880, {rough:0.9}),
+  building:  mat(0x252535, {rough:0.85}),
+  buildWin:  mat(0xffcc66, {rough:0.5, emissive:0xffcc66, emissiveIntensity:0.15}),
+  fence:     mat(0x777777, {rough:0.7, metal:0.4}),
+  chalk:     mat(0xffffff, {rough:1.0, transparent:true, opacity:0.12}),
+  grass:     mat(0x2a4a20, {rough:0.95}),
+  tree:      mat(0x1a3a14, {rough:0.9}),
+  trunk:     mat(0x5a3a20, {rough:0.9}),
+  car1:      mat(0x3366cc, {rough:0.3, metal:0.5}),
+  car2:      mat(0xcc3333, {rough:0.3, metal:0.5}),
+  car3:      mat(0x444444, {rough:0.3, metal:0.5}),
+  tire:      mat(0x222222, {rough:0.9}),
+  rope1:     mat(0x3498db, {rough:0.6}),
+  rope2:     mat(0xe74c3c, {rough:0.6}),
+  // Character materials
+  jumperSkin:   mat(0xA0704C),
+  jumperShirt:  mat(0xE8C616),
+  jumperPants:  mat(0x2C3E50),
+  jumperShoe:   mat(0x333333),
+  jumperHair:   mat(0x1E1008),
+  turnerLSkin:  mat(0xB07848),
+  turnerLShirt: mat(0x2ECC71),
+  turnerLPants: mat(0x34495E),
+  turnerLHair:  mat(0x3B2317),
+  turnerRSkin:  mat(0x8B6240),
+  turnerRShirt: mat(0xC471ED),
+  turnerRPants: mat(0x2C3E50),
+  turnerRHair:  mat(0x1C1008),
+  shoe:         mat(0x333333),
+  shoeSole:     mat(0xeeeeee),
+};
+
+// ═══════════════════════════════════
+//  ENVIRONMENT
+// ═══════════════════════════════════
+function buildEnvironment(){
+  // Ground (blacktop court)
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(60, 60),
+    MAT.blacktop
+  );
+  ground.rotation.x = -PI/2;
+  ground.receiveShadow = true;
+  scene.add(ground);
+
+  // Court lines (chalk)
+  const lineGeo = new THREE.PlaneGeometry(10, 0.06);
+  for(let i=-2; i<=2; i++){
+    const line = new THREE.Mesh(lineGeo, MAT.chalk);
+    line.rotation.x = -PI/2;
+    line.position.set(0, 0.005, i*2);
+    scene.add(line);
+  }
+  // Cross lines
+  const crossGeo = new THREE.PlaneGeometry(0.06, 10);
+  for(let i=-2; i<=2; i++){
+    const line = new THREE.Mesh(crossGeo, MAT.chalk);
+    line.rotation.x = -PI/2;
+    line.position.set(i*2, 0.005, 0);
+    scene.add(line);
+  }
+
+  // Hopscotch chalk marks
+  const chalkGeo = new THREE.PlaneGeometry(0.7, 0.7);
+  const chalkMat = mat(0xffcccc, {rough:1, transparent:true, opacity:0.08});
+  for(let i=0; i<6; i++){
+    const c = new THREE.Mesh(chalkGeo, chalkMat);
+    c.rotation.x = -PI/2;
+    c.position.set(-6 + rand(-0.3,0.3), 0.005, -3+i*1.1);
+    scene.add(c);
+  }
+
+  // Guide line between turners (shows where to jump)
+  const guideMat = mat(0xFFD700, {rough:1, transparent:true, opacity:0.35, emissive:0xFFD700, emissiveIntensity:0.15});
+  // Dashed line made of small rectangles
+  const dashLen = 0.3, gapLen = 0.25, dashW = 0.06;
+  const totalSpan = TURNER_DIST * 2;
+  for(let d = -TURNER_DIST + 0.5; d < TURNER_DIST - 0.3; d += dashLen + gapLen){
+    const dash = new THREE.Mesh(new THREE.PlaneGeometry(dashLen, dashW), guideMat);
+    dash.rotation.x = -PI/2;
+    dash.rotation.z = PI/2;
+    dash.position.set(d + dashLen/2, 0.006, 0);
+    scene.add(dash);
+  }
+  // Small diamond marker at center
+  const markerMat = mat(0xFFD700, {rough:0.8, transparent:true, opacity:0.45, emissive:0xFFD700, emissiveIntensity:0.25});
+  const marker = new THREE.Mesh(new THREE.PlaneGeometry(0.35, 0.35), markerMat);
+  marker.rotation.x = -PI/2;
+  marker.rotation.z = PI/4;  // diamond orientation
+  marker.position.set(0, 0.007, 0);
+  scene.add(marker);
+
+  // Sidewalk border
+  const swGeo = new THREE.BoxGeometry(70, 0.15, 4);
+  [-15,15].forEach(z => {
+    const sw = new THREE.Mesh(swGeo, MAT.sidewalk);
+    sw.position.set(0, 0.07, z);
+    sw.receiveShadow = true;
+    scene.add(sw);
+  });
+
+  // Fence (chain-link style)
+  buildFence(-14, -25, 25);
+  buildFence(14, -25, 25);
+
+  // Buildings (background)
+  buildBuildings();
+
+  // Parked cars
+  buildCar(-10, 0, -12, 0, MAT.car1);
+  buildCar(-6, 0, -12, 0.1, MAT.car2);
+  buildCar(8, 0, 12, PI, MAT.car3);
+  buildCar(12, 0, 12, PI+0.05, MAT.car1);
+
+  // Trees
+  for(let i=0; i<8; i++){
+    const tx = rand(-25,25), tz = rand(16,22) * (i%2===0?1:-1);
+    buildTree(tx, tz);
+  }
+
+  // Spectator benches/crates
+  buildBench(7, 5);
+  buildBench(-7, -5);
+
+  // Skybox (gradient dome)
+  buildSky();
+}
+
+function buildFence(z, xStart, xEnd){
+  const postGeo = new THREE.CylinderGeometry(0.04, 0.04, 2.5, 6);
+  const railGeo = new THREE.CylinderGeometry(0.02, 0.02, 1, 4);
+  for(let x=xStart; x<=xEnd; x+=2){
+    const post = new THREE.Mesh(postGeo, MAT.fence);
+    post.position.set(x, 1.25, z);
+    post.castShadow = true;
+    scene.add(post);
+  }
+  // Top rail
+  const topRail = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.025, 0.025, xEnd-xStart, 8),
+    MAT.fence
+  );
+  topRail.position.set((xStart+xEnd)/2, 2.5, z);
+  topRail.rotation.z = PI/2;
+  scene.add(topRail);
+
+  // Diamond mesh (simplified)
+  const meshMat = mat(0x777777, {rough:0.7, metal:0.3, transparent:true, opacity:0.15, wireframe:true});
+  const meshGeo = new THREE.PlaneGeometry(xEnd-xStart, 2.3, (xEnd-xStart)*2, 10);
+  const mesh = new THREE.Mesh(meshGeo, meshMat);
+  mesh.position.set((xStart+xEnd)/2, 1.35, z);
+  if(z>0) mesh.rotation.y = PI;
+  scene.add(mesh);
+}
+
+function buildBuildings(){
+  const builds = [
+    {x:-20, z:-22, w:6, h:12, d:5},
+    {x:-12, z:-24, w:5, h:8, d:4},
+    {x:-4, z:-26, w:7, h:15, d:6},
+    {x:6, z:-23, w:8, h:10, d:5},
+    {x:16, z:-25, w:6, h:18, d:5},
+    {x:-18, z:22, w:7, h:9, d:5},
+    {x:-8, z:25, w:10, h:14, d:6},
+    {x:5, z:24, w:6, h:11, d:5},
+    {x:14, z:23, w:8, h:16, d:5},
+  ];
+  builds.forEach(b => {
+    const geo = new THREE.BoxGeometry(b.w, b.h, b.d);
+    const bldg = new THREE.Mesh(geo, MAT.building);
+    bldg.position.set(b.x, b.h/2, b.z);
+    bldg.castShadow = true;
+    bldg.receiveShadow = true;
+    scene.add(bldg);
+
+    // Windows
+    const winGeo = new THREE.PlaneGeometry(0.5, 0.7);
+    for(let wy=1.5; wy<b.h-1; wy+=2){
+      for(let wx=-b.w/2+1; wx<b.w/2-0.5; wx+=1.5){
+        if(Math.random()>0.3){
+          const win = new THREE.Mesh(winGeo, MAT.buildWin);
+          win.position.set(b.x+wx, wy, b.z + b.d/2+0.01);
+          scene.add(win);
+          const win2 = win.clone();
+          win2.position.z = b.z - b.d/2-0.01;
+          win2.rotation.y = PI;
+          scene.add(win2);
+        }
+      }
+    }
+  });
+}
+
+function buildCar(x, y, z, rot, bodyMat){
+  const car = new THREE.Group();
+  // Body
+  const body = new THREE.Mesh(new THREE.BoxGeometry(2, 0.8, 4), bodyMat);
+  body.position.y = 0.65;
+  body.castShadow = true;
+  car.add(body);
+  // Roof
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.6, 2.2), bodyMat);
+  roof.position.y = 1.25;
+  roof.castShadow = true;
+  car.add(roof);
+  // Wheels
+  const wheelGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.2, 12);
+  [[-0.9,0.3,-1.3],[0.9,0.3,-1.3],[-0.9,0.3,1.3],[0.9,0.3,1.3]].forEach(p => {
+    const w = new THREE.Mesh(wheelGeo, MAT.tire);
+    w.position.set(...p);
+    w.rotation.z = PI/2;
+    car.add(w);
+  });
+  // Windshield
+  const glassMat = mat(0x446688, {rough:0.1, metal:0.3, transparent:true, opacity:0.4});
+  const glass = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.5), glassMat);
+  glass.position.set(0, 1.3, 1.11);
+  car.add(glass);
+
+  car.position.set(x, y, z);
+  car.rotation.y = rot;
+  scene.add(car);
+}
+
+function buildTree(x, z){
+  const trunk = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.15, 0.2, 3, 6),
+    MAT.trunk
+  );
+  trunk.position.set(x, 1.5, z);
+  trunk.castShadow = true;
+  scene.add(trunk);
+
+  const foliage = new THREE.Mesh(
+    new THREE.SphereGeometry(1.5, 8, 6),
+    MAT.tree
+  );
+  foliage.position.set(x, 3.8, z);
+  foliage.castShadow = true;
+  scene.add(foliage);
+}
+
+function buildBench(x, z){
+  const bench = new THREE.Group();
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(2, 0.1, 0.5), mat(0x8B6240));
+  seat.position.y = 0.5;
+  bench.add(seat);
+  const leg1 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.5, 0.1), mat(0x555555));
+  leg1.position.set(-0.8, 0.25, 0);
+  bench.add(leg1);
+  const leg2 = leg1.clone();
+  leg2.position.x = 0.8;
+  bench.add(leg2);
+  bench.position.set(x, 0, z);
+  scene.add(bench);
+}
+
+function buildSky(){
+  const skyGeo = new THREE.SphereGeometry(80, 32, 16);
+  const skyMat = new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    uniforms: {},
+    vertexShader: `
+      varying vec3 vPos;
+      void main(){
+        vPos = position;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      varying vec3 vPos;
+      void main(){
+        float h = normalize(vPos).y;
+        vec3 low  = vec3(0.93, 0.77, 0.47);  // golden
+        vec3 mid  = vec3(0.71, 0.35, 0.18);  // orange
+        vec3 high = vec3(0.15, 0.09, 0.19);  // deep purple
+        vec3 col = mix(low, mid, smoothstep(0.0, 0.3, h));
+        col = mix(col, high, smoothstep(0.3, 0.8, h));
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `
+  });
+  const sky = new THREE.Mesh(skyGeo, skyMat);
+  scene.add(sky);
+}
+
+// ═══════════════════════════════════
+//  CHARACTER BUILDER
+// ═══════════════════════════════════
+function buildCharacterModel(skinMat, shirtMat, pantsMat, hairMat, isGirl=false){
+  const group = new THREE.Group();
+
+  // Hips (root for legs)
+  const hips = new THREE.Group();
+  hips.position.y = 0.9;
+  group.add(hips);
+
+  // Left leg
+  const leftLeg = new THREE.Group();
+  const leftThigh = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.08, 0.45, 8), pantsMat);
+  leftThigh.position.y = -0.22;
+  leftLeg.add(leftThigh);
+  const leftShin = new THREE.Group();
+  leftShin.position.y = -0.45;
+  const leftShinMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.45, 8), pantsMat);
+  leftShinMesh.position.y = -0.22;
+  leftShin.add(leftShinMesh);
+  // Shoe
+  const leftShoe = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.25), MAT.shoe);
+  leftShoe.position.set(0, -0.48, 0.04);
+  leftShin.add(leftShoe);
+  const leftSole = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.02, 0.25), MAT.shoeSole);
+  leftSole.position.set(0, -0.45, 0.04);
+  leftShin.add(leftSole);
+  leftLeg.add(leftShin);
+  leftLeg.position.x = -0.12;
+  hips.add(leftLeg);
+
+  // Right leg (clone)
+  const rightLeg = leftLeg.clone();
+  rightLeg.position.x = 0.12;
+  hips.add(rightLeg);
+
+  // Torso
+  const torso = new THREE.Group();
+  torso.position.y = 0.9;
+  group.add(torso);
+  const torsoMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.2, 0.55, 8), shirtMat);
+  torsoMesh.position.y = 0.27;
+  torsoMesh.castShadow = true;
+  torso.add(torsoMesh);
+
+  // V-neck detail (small wedge)
+  if(!isGirl){
+    const vneck = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.08, 3), skinMat);
+    vneck.position.set(0, 0.52, 0.14);
+    vneck.rotation.x = 0.2;
+    torso.add(vneck);
+  }
+
+  // Shoulders
+  const shoulders = new THREE.Group();
+  shoulders.position.y = 0.55;
+  torso.add(shoulders);
+
+  // Left arm
+  const leftArm = new THREE.Group();
+  const leftUpper = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.055, 0.35, 8), skinMat);
+  leftUpper.position.y = -0.17;
+  leftArm.add(leftUpper);
+  const leftForearm = new THREE.Group();
+  leftForearm.position.y = -0.35;
+  const leftForearmMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.045, 0.3, 8), skinMat);
+  leftForearmMesh.position.y = -0.15;
+  leftForearm.add(leftForearmMesh);
+  const leftHand = new THREE.Mesh(new THREE.SphereGeometry(0.05, 6, 6), skinMat);
+  leftHand.position.y = -0.32;
+  leftForearm.add(leftHand);
+  leftArm.add(leftForearm);
+  leftArm.position.set(-0.22, 0, 0);
+  shoulders.add(leftArm);
+
+  // Right arm (clone)
+  const rightArm = leftArm.clone();
+  rightArm.position.x = 0.22;
+  shoulders.add(rightArm);
+
+  // Neck
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.1, 8), skinMat);
+  neck.position.y = 0.59;
+  torso.add(neck);
+
+  // Head
+  const head = new THREE.Group();
+  head.position.y = 0.7;
+  torso.add(head);
+  const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 10), skinMat);
+  headMesh.castShadow = true;
+  head.add(headMesh);
+
+  // Eyes
+  const eyeWhite = mat(0xffffff);
+  const eyePupil = mat(0x3E2B1A);
+  [-0.06, 0.06].forEach(ex => {
+    const white = new THREE.Mesh(new THREE.SphereGeometry(0.032, 8, 6), eyeWhite);
+    white.position.set(ex, 0.03, 0.15);
+    head.add(white);
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.018, 6, 6), eyePupil);
+    pupil.position.set(ex, 0.03, 0.175);
+    head.add(pupil);
+  });
+
+  // Eyebrows
+  const browMat = mat(0x1a1008);
+  [-0.06, 0.06].forEach(bx => {
+    const brow = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.012, 0.01), browMat);
+    brow.position.set(bx, 0.07, 0.16);
+    head.add(brow);
+  });
+
+  // Nose
+  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 5), skinMat);
+  nose.position.set(0, -0.01, 0.175);
+  nose.scale.set(0.8, 0.7, 1);
+  head.add(nose);
+
+  // Mouth
+  const mouthMat = mat(0xB87060);
+  const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.015, 0.01), mouthMat);
+  mouth.position.set(0, -0.055, 0.17);
+  head.add(mouth);
+
+  // Ears
+  [-0.17, 0.17].forEach(ex => {
+    const ear = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 5), skinMat);
+    ear.position.set(ex, 0.01, 0);
+    ear.scale.set(0.5, 0.8, 0.6);
+    head.add(ear);
+  });
+
+  // Hair
+  if(isGirl){
+    // Long hair flowing down
+    const hairTop = new THREE.Mesh(new THREE.SphereGeometry(0.19, 12, 8, 0, TAU, 0, PI*0.6), hairMat);
+    hairTop.position.y = 0.04;
+    head.add(hairTop);
+    // Hair flowing down back
+    const hairBack = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.08, 0.5, 8), hairMat);
+    hairBack.position.set(0, -0.15, -0.08);
+    head.add(hairBack);
+    // Beads (small spheres in hair)
+    const beadMat = mat(0xFFD700);
+    for(let i=0; i<4; i++){
+      const bead = new THREE.Mesh(new THREE.SphereGeometry(0.015, 6, 6), beadMat);
+      bead.position.set(rand(-0.08, 0.08), -0.3-i*0.05, -0.08+rand(-0.02,0.02));
+      head.add(bead);
+    }
+    // Earrings
+    const earringMat = mat(0xFFD700, {metal:0.8, rough:0.2});
+    [-0.18, 0.18].forEach(ex => {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.02, 0.004, 6, 12), earringMat);
+      ring.position.set(ex, -0.05, 0);
+      head.add(ring);
+    });
+  } else {
+    // Short hair (cap)
+    const hairMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.18, 12, 8, 0, TAU, 0, PI*0.55),
+      hairMat
+    );
+    hairMesh.position.y = 0.02;
+    head.add(hairMesh);
+  }
+
+  // Store references for animation
+  group.userData = {
+    hips, torso, shoulders, head,
+    leftLeg, rightLeg,
+    leftArm, rightArm,
+    leftShin: leftLeg.children[1],
+    rightShin: rightLeg.children[1],
+    leftForearm: leftArm.children[1],
+    rightForearm: rightArm.children[1],
+    leftHand: leftArm.children[1].children[1],
+    rightHand: rightArm.children[1].children[1],
+  };
+
+  group.castShadow = true;
+  group.traverse(c => { if(c.isMesh){ c.castShadow=true; c.receiveShadow=true; }});
+
+  return group;
+}
+
+// ═══════════════════════════════════
+//  ROPE SYSTEM (Parametric arc, like the 2D game but in 3D)
+//  Each rope traces a curved arc driven by a rotation angle.
+//  At the endpoints the rope follows a small wrist circle;
+//  in the middle the full swing envelope takes over.
+// ═══════════════════════════════════
+class PhysicsRope {
+  constructor(color, phaseOffset){
+    this.segCount = ROPE_SEG_COUNT;
+    this.phaseOffset = phaseOffset;
+    this.groundY = 0.005;
+    this.wasOnGround = false;
+    this.angle = 0;
+
+    // Store computed 3D positions
+    this.points = [];
+    for(let i=0; i<=this.segCount; i++){
+      this.points.push(new Vector3());
+    }
+
+    // visual
+    this.meshes = [];
+    this.ropeMat = color===1 ? MAT.rope1 : MAT.rope2;
+    this.buildVisual();
+  }
+
+  buildVisual(){
+    // Use thin cylinders for each segment
+    const segLen = (TURNER_DIST*2) / this.segCount;
+    const geo = new THREE.CylinderGeometry(ROPE_THICKNESS, ROPE_THICKNESS, segLen*1.15, 5, 1);
+    geo.rotateX(PI/2);
+    for(let i=0; i<this.segCount; i++){
+      const mesh = new THREE.Mesh(geo, this.ropeMat);
+      mesh.castShadow = true;
+      scene.add(mesh);
+      this.meshes.push(mesh);
+    }
+  }
+
+  // Compute the parametric rope shape for a given angle.
+  // This mirrors the 2D game's ropePoints() — the envelope sin(PI*t)
+  // creates the curved jump-rope arc. The angle drives the vertical
+  // (y) and depth (z) components.
+  computeShape(angle, handLY, handLZ, handRY, handRZ){
+    this.angle = angle;
+    const SAG = 0.08; // natural sag in the middle (meters)
+
+    for(let i=0; i<=this.segCount; i++){
+      const t = i / this.segCount;
+      const x = lerp(-TURNER_DIST, TURNER_DIST, t);
+
+      // Envelope: 0 at endpoints, 1 at center (like sin(PI*t))
+      const env = sin(PI * t);
+
+      // Blend: at endpoints (env≈0) → small wrist up/down pump,
+      //        at center (env≈1) → full ROPE_RADIUS arc.
+      // Hands pump vertically; the rope itself swings in the full arc.
+      const yDisp = ROPE_RADIUS * sin(angle) * env + WRIST_RADIUS * sin(angle) * (1 - env);
+      let y = HAND_HEIGHT + yDisp + SAG * env;
+
+      const zDisp = ROPE_RADIUS * cos(angle) * env + WRIST_RADIUS * 0.12 * cos(angle) * (1 - env);
+      let z = zDisp;
+
+      // Ground collision — rope can't go below ground
+      const onGround = y < this.groundY + 0.01;
+      if(y < this.groundY) y = this.groundY;
+
+      this.points[i].set(x, y, z);
+    }
+
+    // Ground slap detection — check the lowest point near center
+    let lowestMidY = 999;
+    for(let i=Math.floor(this.segCount*0.3); i<=Math.ceil(this.segCount*0.7); i++){
+      lowestMidY = Math.min(lowestMidY, this.points[i].y);
+    }
+    const onGround = lowestMidY < 0.04;
+    if(onGround && !this.wasOnGround){
+      sfx('slap', 0.8);
+    }
+    this.wasOnGround = onGround;
+  }
+
+  // For tangle: distort the shape toward the center/ground
+  applyTangle(tangleProg){
+    const centerIdx = Math.floor(this.segCount * 0.5);
+    for(let i=1; i<this.segCount; i++){
+      const d = Math.abs(i - centerIdx) / this.segCount;
+      const inf = Math.max(0, 1-d*3) * tangleProg;
+      const p = this.points[i];
+      p.y = lerp(p.y, 0.05, inf * 0.15);
+      p.z = lerp(p.z, 0, inf * 0.1);
+      // Add some random wobble
+      p.x += sin(i*5 + tangleProg*10) * 0.02 * tangleProg;
+    }
+  }
+
+  updateVisual(){
+    for(let i=0; i<this.segCount; i++){
+      const a = this.points[i];
+      const b = this.points[i+1];
+      const mid = new Vector3().addVectors(a, b).multiplyScalar(0.5);
+      this.meshes[i].position.copy(mid);
+      // Orient the cylinder towards the next point
+      const dir = new Vector3().subVectors(b, a);
+      const len = dir.length();
+      if(len > 0.001){
+        this.meshes[i].lookAt(b);
+        this.meshes[i].scale.set(1, 1, len / ((TURNER_DIST*2)/this.segCount * 1.15) );
+      }
+    }
+  }
+
+  getMinYNearCenter(halfWidth=0.5){
+    let minY = 999;
+    for(let i=0; i<=this.segCount; i++){
+      if(Math.abs(this.points[i].x) < halfWidth){
+        minY = Math.min(minY, this.points[i].y);
+      }
+    }
+    return minY;
+  }
+
+  dispose(){
+    this.meshes.forEach(m => { scene.remove(m); m.geometry.dispose(); });
+    this.meshes = [];
+  }
+}
+
+// ═══════════════════════════════════
+//  PARTICLE SYSTEM (3D)
+// ═══════════════════════════════════
+const particles = [];
+const particleGeo = new THREE.SphereGeometry(0.04, 4, 4);
+
+function emit3D(pos, count, cfg){
+  for(let i=0; i<count; i++){
+    const pMat = mat(cfg.colors[floor(Math.random()*cfg.colors.length)], {transparent:true});
+    const mesh = new THREE.Mesh(particleGeo, pMat);
+    mesh.position.copy(pos);
+    mesh.scale.setScalar(rand(cfg.rMin||0.5, cfg.rMax||1.5));
+    scene.add(mesh);
+    particles.push({
+      mesh,
+      vx: rand(cfg.vxMin||-1, cfg.vxMax||1),
+      vy: rand(cfg.vyMin||1, cfg.vyMax||4),
+      vz: rand(cfg.vzMin||-1, cfg.vzMax||1),
+      life: 1,
+      decay: rand(cfg.decayMin||0.02, cfg.decayMax||0.05),
+      grav: cfg.grav || -6
     });
   }
 }
 
-/* ═══════════════════════════════════
-   PARTICLES
-   ═══════════════════════════════════ */
-const parts = [];
-function emit(x,y,n,cfg){
-  for(let i=0;i<n;i++) parts.push({
-    x:x, y:y,
-    vx:rand(cfg.vx||-0.8, cfg.VX||0.8),
-    vy:rand(cfg.vy||-2.5, cfg.VY||-0.3),
-    life:1, decay:rand(cfg.d||.02, cfg.D||.04),
-    r:rand(cfg.r||2, cfg.R||4),
-    col:cfg.cols[((Math.random()*cfg.cols.length)|0)],
-    g:cfg.g||.07
+function tickParticles(dt){
+  for(let i=particles.length-1; i>=0; i--){
+    const p = particles[i];
+    p.mesh.position.x += p.vx * dt;
+    p.mesh.position.y += p.vy * dt;
+    p.mesh.position.z += p.vz * dt;
+    p.vy += p.grav * dt;
+    p.life -= p.decay;
+    p.mesh.material.opacity = p.life;
+    p.mesh.scale.setScalar(p.life);
+    if(p.life <= 0){
+      scene.remove(p.mesh);
+      p.mesh.geometry?.dispose();
+      p.mesh.material?.dispose();
+      particles.splice(i, 1);
+    }
+  }
+}
+
+const DUST_CFG  = {colors:[0xc8b89a, 0xa89070, 0xd4c4a8], vyMin:0.5, vyMax:2, grav:-3, decayMin:0.015, decayMax:0.03};
+const SPARK_CFG = {colors:[0xFFD700, 0xFFA500, 0xFF6347, 0xffffff], vyMin:2, vyMax:5, vxMin:-2, vxMax:2, vzMin:-2, vzMax:2, grav:-8, decayMin:0.03, decayMax:0.06};
+
+// ═══════════════════════════════════
+//  SPECTATORS (simple standing figures)
+// ═══════════════════════════════════
+function buildSpectators(){
+  const specs = [
+    {x:6, z:4.5, rot:PI*0.8},
+    {x:7.5, z:4, rot:PI*0.9},
+    {x:-6.5, z:-4.5, rot:-PI*0.2},
+    {x:-7.5, z:-3.5, rot:-PI*0.1},
+    {x:5, z:-5, rot:PI*1.3},
+  ];
+  const skinColors = [0xA0704C, 0xB07848, 0x8B6240, 0xC49060, 0x7A5535];
+  const shirtColors = [0xE84C3D, 0x3498DB, 0x2ECC71, 0xF39C12, 0x9B59B6];
+
+  specs.forEach((s, i) => {
+    const skin = mat(skinColors[i % skinColors.length]);
+    const shirt = mat(shirtColors[i % shirtColors.length]);
+    const pants = mat(0x2C3E50);
+
+    const g = new THREE.Group();
+    // Simple body
+    const bodyMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.18, 0.55, 8), shirt);
+    bodyMesh.position.y = 1.17;
+    bodyMesh.castShadow = true;
+    g.add(bodyMesh);
+    // Legs
+    const legGeo = new THREE.CylinderGeometry(0.07, 0.06, 0.5, 6);
+    [-0.08, 0.08].forEach(lx => {
+      const leg = new THREE.Mesh(legGeo, pants);
+      leg.position.set(lx, 0.6, 0);
+      leg.castShadow = true;
+      g.add(leg);
+    });
+    // Head
+    const headM = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 8), skin);
+    headM.position.y = 1.65;
+    headM.castShadow = true;
+    g.add(headM);
+    // Hair
+    const hairM = new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 6, 0, TAU, 0, PI*0.5), mat(0x1a1008));
+    hairM.position.y = 1.68;
+    g.add(hairM);
+    // Shoes
+    [-0.08, 0.08].forEach(sx => {
+      const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.06, 0.18), MAT.shoe);
+      shoe.position.set(sx, 0.33, 0.02);
+      g.add(shoe);
+    });
+
+    g.position.set(s.x, 0, s.z);
+    g.rotation.y = s.rot;
+    scene.add(g);
   });
 }
-function tickParts(){
-  for(let i=parts.length-1;i>=0;i--){
-    const p=parts[i]; p.x+=p.vx; p.y+=p.vy; p.vy+=p.g; p.life-=p.decay;
-    if(p.life<=0) parts.splice(i,1);
-  }
-}
-function drawParts(){
-  for(const p of parts){
-    C.globalAlpha=p.life*.8;
-    C.fillStyle=p.col;
-    C.beginPath(); C.arc(p.x,p.y,p.r*p.life,0,TAU); C.fill();
-  }
-  C.globalAlpha=1;
-}
-const DUST   = {vx:-1.5,VX:1.5,vy:-2.5,VY:-0.5,d:.02,D:.04,r:2,R:5, cols:['#c8b89a','#a89070','#d4c4a8','#8a7a60'],g:.08};
-const SPARK  = {vx:-3,VX:3,vy:-4,VY:-1,d:.03,D:.06,r:1.5,R:3.5, cols:['#FFD700','#FFA500','#FF6347','#fff'],g:.1};
-const TPART  = {vx:-2,VX:2,vy:-3,VY:0,d:.01,D:.025,r:2,R:6, cols:['#e74c3c','#c0392b','#3498db','#2980b9','#fff'],g:.05};
 
-/* ═══════════════════════════════════
-   GAME STATE
-   ═══════════════════════════════════ */
-let state  = 'menu';   // menu│jumping│tangled│score
-let dIdx   = 1;        // difficulty index (default: easy)
-let diff   = DIFFS[dIdx];
-let rSpeed = 0;        // current rope rad/s
+// ═══════════════════════════════════
+//  GAME CHARACTERS
+// ═══════════════════════════════════
+let playerModel, turnerLModel, turnerRModel;
+let playerPos = new Vector3(0, 0, 5); // start behind ropes
+let playerVelY = 0;
+let playerVelX = 0;  // smooth horizontal velocity
+let playerVelZ = 0;
+const PLAYER_ACCEL = 28.0;  // acceleration
+const PLAYER_FRICTION = 8.0;  // deceleration when no input
+let playerAirborne = false;
+let playerYaw = PI; // facing towards turners
+let playerPitch = 0;
 
-// rope
-let rAngle = 0;
+// Camera orbit angles
+let camYaw = 0;
+let camPitch = 0.25;
+let camDist = 4.5;
 
-// jumper
-let jx = CX, jy = GND, jvy = 0, airborne = false;
-var MOVE_SPEED = 280;  // pixels per second for arrow‑key movement
-let insideRopes = false;  // true once player walks between turners
+// Rope systems
+let rope1, rope2;
+let ropeAngle1=0, ropeAngle2=0;
 
-// scoring
-let score=0, combo=0, maxCombo=0, flow=0;
-let totalJ=0, perfC=0, goodC=0, okC=0;
+function initGameObjects(){
+  // Player (jumper)
+  playerModel = buildCharacterModel(
+    MAT.jumperSkin, MAT.jumperShirt, MAT.jumperPants, MAT.jumperHair, false
+  );
+  playerModel.position.copy(playerPos);
+  scene.add(playerModel);
 
-// rhythm
-let jumpedBeat = false, tSinceBeat = 9, beatFlash = 0, beatPulse = 0;
-let curBeat = 0;
+  // Left turner (boy)
+  turnerLModel = buildCharacterModel(
+    MAT.turnerLSkin, MAT.turnerLShirt, MAT.turnerLPants, MAT.turnerLHair, false
+  );
+  turnerLModel.position.set(-TURNER_DIST, 0, 0);
+  turnerLModel.rotation.y = PI/2;
+  scene.add(turnerLModel);
 
-// judgment display
-let jdg = '', jdgT = 0, jdgY = 0;
+  // Right turner (girl)
+  turnerRModel = buildCharacterModel(
+    MAT.turnerRSkin, MAT.turnerRShirt, MAT.turnerRPants, MAT.turnerRHair, true
+  );
+  turnerRModel.position.set(TURNER_DIST, 0, 0);
+  turnerRModel.rotation.y = -PI/2;
+  scene.add(turnerRModel);
 
-// tangle
-let tangled = false, tangleProg = 0, tangleWho = 1;
-let tangleType = 'step';
-let tangleWait = 0;
-let shake = 0;
-
-// grace period — free beats after entry where misses don't tangle
-let graceBeats = 0;   // counts down; while >0, misses are forgiven
-var GRACE_COUNT = 4;  // number of free beats after entering
-
-// animation helpers
-let sq = 1, st = 1, lean = 0, armA = 0;
-
-// timing
-let gTime = 0, totalTime = 0;
-
-// menu
-let menuRA = 0, menuBounce = 0;
-
-/* ── input ── */
-const keys = {};
-const jp = {};  // just‑pressed (one frame)
-window.addEventListener('keydown', function(e){
-  if(!keys[e.code]) jp[e.code]=true;
-  keys[e.code]=true;
-  initAudio();
-  e.preventDefault();
-});
-window.addEventListener('keyup', function(e){ keys[e.code]=false; });
-canvas.addEventListener('touchstart', function(e){ e.preventDefault(); initAudio(); jp['Space']=true; keys['Space']=true; });
-canvas.addEventListener('touchend',   function(e){ e.preventDefault(); keys['Space']=false; });
-function pressed(c){ return jp[c]===true; }
-
-/* ═══════════════════════════════════
-   ROPE COMPUTATION
-   ═══════════════════════════════════ */
-var WRIST_R = 16;  // wrist circle radius — matches drawTurner
-function ropePoints(angle){
-  var pts=[];
-  // Wrist vertical displacement at the endpoints (hands gripping rope)
-  var handDy = WRIST_R * sin(angle);
-  for(var i=0;i<=SEGS;i++){
-    var t=i/SEGS;
-    var x=lerp(TL_X, TR_X, t);
-    var env=sin(PI*t);
-    // Blend: at endpoints (env≈0) rope follows the small wrist circle,
-    // in the middle (env≈1) it follows the full swing arc.
-    var yDisp = ROPE_R*sin(angle)*env + handDy*(1-env);
-    var y = HAND_Y + yDisp + 6*env;   // 6px natural sag in middle
-    var onGnd = y > GND-2;
-    if(y>GND) y=GND;
-    var z = ROPE_R*cos(angle)*env + WRIST_R*cos(angle)*(1-env);
-    pts.push({x:x, y:y, z:z, t:t, onGnd:onGnd, env:env});
-  }
-  return pts;
+  // Ropes
+  rope1 = new PhysicsRope(1, 0);
+  rope2 = new PhysicsRope(2, PI);
 }
 
-function deformedRope(angle, ct, prog, fx, fy){
-  var pts = ropePoints(angle);
-  for(var k=0;k<pts.length;k++){
-    var p = pts[k];
-    var d = abs(p.t - ct);
-    var pull = 0.28*prog;
-    if(d < pull){
-      var inf = Math.pow((1-d/pull)*prog, 1.5);
-      p.y = lerp(p.y, fy, inf);
-      p.x = lerp(p.x, fx, inf*0.12);
-      if(d < 0.13*prog){
-        var w = sin((p.t-ct)*75*prog)*14*prog;
-        p.y += w; p.x += w*0.25;
-      }
-    }
-    p.z *= (1 - prog*0.85);
-  }
-  return pts;
-}
+// ═══════════════════════════════════
+//  TURNER ANIMATION  (IK — hands track rope endpoints)
+// ═══════════════════════════════════
+const WRIST_RADIUS = 0.35; // small wrist circle at rope endpoints
+const HAND_HEIGHT  = 1.5;  // height of the rope attachment on turners
 
-function ropeCtrY(angle){
-  return HAND_Y + ROPE_R*sin(angle) + 6;
-}
+// Arm segment lengths (must match buildCharacterModel)
+const UPPER_ARM_LEN = 0.35;
+const FOREARM_LEN   = 0.32;  // forearm mesh 0.3 + hand offset
+const TOTAL_ARM_LEN = UPPER_ARM_LEN + FOREARM_LEN;
 
-/* ── draw rope ── */
-function drawRope(pts, dark, light){
-  // ground shadow
-  C.globalAlpha=0.12; C.strokeStyle='#000'; C.lineWidth=4; C.lineCap='round';
-  C.beginPath();
-  for(var i=0;i<pts.length;i++){
-    if(i===0) C.moveTo(pts[i].x, GND+3);
-    else C.lineTo(pts[i].x, GND+3);
-  }
-  C.stroke(); C.globalAlpha=1;
+function animateTurner(model, angle1, angle2, dt, side){
+  const ud = model.userData;
+  if(!ud.leftArm || !ud.rightArm) return;
 
-  // rope body
-  for(var i=0;i<pts.length-1;i++){
-    var a=pts[i], b=pts[i+1];
-    var avgZ=(a.z+b.z)/2;
-    var df=clamp((avgZ/ROPE_R+1)/2, 0, 1);
-    C.beginPath(); C.moveTo(a.x,a.y); C.lineTo(b.x,b.y);
-    C.lineWidth = lerp(3, 7.5, df);
-    C.globalAlpha = lerp(0.45, 1, df);
-    C.strokeStyle = df>0.5 ? light : dark;
-    C.lineCap='round'; C.stroke();
-  }
-  C.globalAlpha=1;
+  // Which arm holds which rope
+  const arm1 = (side==='L') ? ud.rightArm : ud.leftArm;   // rope1
+  const arm2 = (side==='L') ? ud.leftArm  : ud.rightArm;  // rope2
+  const fore1 = arm1.children[1];
+  const fore2 = arm2.children[1];
 
-  // ground‑contact glow
-  for(var i=0;i<pts.length;i++){
-    var p=pts[i];
-    if(p.onGnd && p.y>=GND-3){
-      C.beginPath(); C.arc(p.x,GND,3.5,0,TAU);
-      C.fillStyle='rgba(255,255,200,.1)'; C.fill();
+  // Get the actual rope endpoint positions that each hand must follow
+  const ep1 = getRopeEndpoint(angle1);
+  const ep2 = getRopeEndpoint(angle2);
+
+  // Shoulder world Y (torso 0.9 + shoulders 0.55)
+  const shoulderY = 1.45;
+
+  function aimArmToRope(arm, forearm, ep, armSideSign){
+    // ep.y = world Y of the rope endpoint this hand grips
+    // ep.z = world Z offset (very small, mostly 0)
+    //
+    // We need the arm to reach from the shoulder to the rope endpoint
+    // while staying IN FRONT of the body (never going behind).
+    //
+    // dy = how far below/above the shoulder (negative = below)
+    // The arm hangs at the shoulder and rotates in X to reach the target.
+    
+    const dy = ep.y - shoulderY;  // range: about -0.3 to +0.4
+    const dz = ep.z;              // very small forward offset
+
+    // How far the hand needs to reach (in the vertical plane in front of body)
+    // We keep a constant forward reach so the arm stays in front.
+    const forwardReach = 0.2; // always reach slightly forward
+    const totalDz = forwardReach + dz;
+
+    // Arm pitch: atan2 maps the vertical offset to an angle
+    // When dy < 0 (below shoulder): arm angles down-forward
+    // When dy > 0 (above shoulder): arm angles up-forward
+    // The arm starts pointing down (rotation.x = 0), negative X = forward/up
+    const targetAngle = Math.atan2(totalDz, -dy);
+    // Clamp so arm stays in front: between -1.8 (forward-down) and -0.4 (forward-up)
+    const armPitch = clamp(-(PI/2) + targetAngle, -1.8, -0.3);
+
+    arm.rotation.x = armPitch;
+    arm.rotation.z = armSideSign * -0.2; // slight outward spread
+
+    // Forearm: bend to fine-tune reaching the exact endpoint
+    // More bent when reaching far down, straighter when up
+    if(forearm){
+      const t = (dy + 0.35) / 0.7; // normalize dy to 0..1 range
+      const bend = lerp(-0.5, -0.2, clamp(t, 0, 1));
+      forearm.rotation.x = bend;
     }
   }
+
+  const outerSign = (side==='L') ? 0.15 : -0.15;
+  const innerSign = (side==='L') ? -0.15 : 0.15;
+
+  aimArmToRope(arm1, fore1, ep1, outerSign);
+  aimArmToRope(arm2, fore2, ep2, innerSign);
+
+  // Slight body sway
+  ud.torso.rotation.z = sin(angle1*0.5)*0.02;
 }
 
-/* ═══════════════════════════════════
-   CHARACTER RENDERING
-   ═══════════════════════════════════ */
-function drawJumper(px, py, psq, pst, plean, parm, tanProg){
-  C.save(); C.translate(px,py); C.rotate(plean); C.scale(psq,pst);
-
-  var skin='#A0704C', skinShade='#8E6342';
-  var shirt='#E8C616', shirt2='#D4B414';
-  var pants='#2C3E50', shoe='#333', hair='#1E1008';
-
-  // shadow
-  var sR = airborne ? 12+(py-(GND-60))*0.12 : 18;
-  if(sR<4) sR=4;
-  C.fillStyle='rgba(0,0,0,.18)';
-  C.beginPath(); C.ellipse(0,2,sR,3.5,0,0,TAU); C.fill();
-
-  // legs
-  var ls = airborne?5:9, kb = airborne?-4:0;
-  C.strokeStyle=pants; C.lineWidth=10; C.lineCap='round';
-  C.beginPath(); C.moveTo(-ls,-55); C.quadraticCurveTo(-ls+kb,-28,-ls,-6); C.stroke();
-  C.beginPath(); C.moveTo( ls,-55); C.quadraticCurveTo( ls-kb,-28, ls,-6); C.stroke();
-
-  // shoes
-  C.fillStyle=shoe;
-  C.fillRect(-ls-7,-7,14,7); C.fillRect(ls-7,-7,14,7);
-  C.fillStyle='#eee';
-  C.fillRect(-ls-7,-2,14,2); C.fillRect(ls-7,-2,14,2);
-
-  // torso
-  var tTop=-95;
-  C.fillStyle=shirt;
-  C.beginPath(); C.moveTo(-17,-55); C.lineTo(-14,tTop);
-  C.quadraticCurveTo(0,tTop-4,14,tTop); C.lineTo(17,-55); C.closePath(); C.fill();
-  C.fillStyle=shirt2;
-  C.beginPath(); C.moveTo(-7,tTop); C.lineTo(0,tTop+7); C.lineTo(7,tTop); C.closePath(); C.fill();
-
-  // arms
-  var shY=tTop+8, sw=sin(parm)*8;
-  C.strokeStyle=skin; C.lineWidth=7; C.lineCap='round';
-  C.beginPath(); C.moveTo(-16,shY); C.quadraticCurveTo(-26,shY+20+sw,-20,shY+38+sw); C.stroke();
-  C.beginPath(); C.moveTo( 16,shY); C.quadraticCurveTo( 26,shY+20-sw, 20,shY+38-sw); C.stroke();
-  C.fillStyle=skin;
-  C.beginPath(); C.arc(-20,shY+38+sw,4,0,TAU); C.fill();
-  C.beginPath(); C.arc( 20,shY+38-sw,4,0,TAU); C.fill();
-
-  // neck + head
-  C.fillStyle=skin; C.fillRect(-4,tTop-8,8,10);
-  var hY=tTop-24;
-  C.beginPath(); C.arc(0,hY,17,0,TAU); C.fill();
-  // ear
-  C.fillStyle=skinShade;
-  C.beginPath(); C.ellipse(-16,hY+1,4,5,0,0,TAU); C.fill();
-  C.beginPath(); C.ellipse( 16,hY+1,4,5,0,0,TAU); C.fill();
-
-  // hair (short, sits on top of head)
-  C.fillStyle=hair;
-  C.beginPath(); C.ellipse(0,hY-12,16,10,0,PI,0); C.fill();
-
-  // eyebrows
-  C.strokeStyle=hair; C.lineWidth=2; C.lineCap='round';
-  C.beginPath(); C.moveTo(-9,hY-7); C.lineTo(-3,hY-8); C.stroke();
-  C.beginPath(); C.moveTo( 3,hY-8); C.lineTo( 9,hY-7); C.stroke();
-
-  // eyes
-  C.fillStyle='#fff';
-  C.beginPath(); C.ellipse(-6,hY-2,4.5,3.5,0,0,TAU); C.fill();
-  C.beginPath(); C.ellipse( 6,hY-2,4.5,3.5,0,0,TAU); C.fill();
-  C.fillStyle='#3E2B1A';
-  C.beginPath(); C.arc(-5,hY-1.5,2.2,0,TAU); C.fill();
-  C.beginPath(); C.arc( 7,hY-1.5,2.2,0,TAU); C.fill();
-  // eye highlights
-  C.fillStyle='#fff';
-  C.beginPath(); C.arc(-4.2,hY-2.3,0.8,0,TAU); C.fill();
-  C.beginPath(); C.arc( 7.8,hY-2.3,0.8,0,TAU); C.fill();
-
-  // nose (small)
-  C.strokeStyle=skinShade; C.lineWidth=1.2; C.lineCap='round';
-  C.beginPath(); C.moveTo(-1,hY+1); C.quadraticCurveTo(0,hY+4,1,hY+1); C.stroke();
-
-  // mouth
-  C.strokeStyle='#B87060'; C.lineWidth=1.6; C.lineCap='round'; C.beginPath();
-  if(tanProg>0.1) C.arc(0,hY+7,4,0.2,PI-0.2);
-  else if(combo>8){ C.arc(0,hY+5,5,0.15,PI-0.15); }
-  else C.arc(0,hY+6,3,0.2,PI-0.2);
-  C.stroke();
-
-  C.restore();
+function getRopeEndpoint(angle, height=HAND_HEIGHT){
+  // Real Double Dutch: hands pump up and down, not in a full circle.
+  // Vertical (Y) is the primary motion; forward/back (Z) is very subtle.
+  const y = height + WRIST_RADIUS * sin(angle);
+  const z = WRIST_RADIUS * 0.12 * cos(angle);  // barely any depth motion
+  return {y, z};
 }
 
-function drawTurner(x, side, a1, a2){
-  C.save();
-  var f = side==='L'?1:-1;
-  C.translate(x,GND);
+// ═══════════════════════════════════
+//  PLAYER ANIMATION
+// ═══════════════════════════════════
+let walkCycle = 0;
+let bouncePhase = 0;
+let jumperLean = 0;
+let jumperSquash = 1;
+let jumperStretch = 1;
 
-  // Left turner: boy with warm brown skin
-  // Right turner: girl with rich deep-brown skin
-  var isGirl = (side==='R');
-  var skin     = side==='L' ? '#B07848' : '#8B6240';
-  var skinShd  = side==='L' ? '#9A6840' : '#7A5535';
-  var sCol     = side==='L' ? '#2ECC71' : '#C471ED';
-  var pants    = side==='L' ? '#34495E' : '#2C3E50';
-  var shoe     = '#333';
-  var hair     = side==='L' ? '#3B2317' : '#1C1008';
-  var lipCol   = side==='L' ? '#A0675A' : '#C07068';
+function animatePlayer(model, dt){
+  const ud = model.userData;
+  if(!ud.leftLeg) return;
 
-  C.fillStyle='rgba(0,0,0,.14)'; C.beginPath(); C.ellipse(0,2,15,3.5,0,0,TAU); C.fill();
+  // Walking animation
+  const speed = Math.sqrt(
+    (keys['KeyW']||keys['KeyS']||keys['ArrowUp']||keys['ArrowDown']?1:0)**2 + (keys['KeyA']||keys['KeyD']||keys['ArrowLeft']||keys['ArrowRight']?1:0)**2
+  );
 
-  // legs
-  if(isGirl){
-    // girl wears leggings — slightly slimmer
-    C.strokeStyle='#2D2D44'; C.lineWidth=9; C.lineCap='round';
+  if(speed > 0 && !playerAirborne){
+    walkCycle += dt * 8;
+    ud.leftLeg.rotation.x = sin(walkCycle) * 0.4;
+    ud.rightLeg.rotation.x = sin(walkCycle + PI) * 0.4;
+    ud.leftArm.rotation.x = sin(walkCycle + PI) * 0.3;
+    ud.rightArm.rotation.x = sin(walkCycle) * 0.3;
+    // Slight torso bob
+    ud.torso.position.y = 0.9 + abs(sin(walkCycle*2))*0.015;
+  } else if(playerAirborne){
+    // Jump pose — legs pull up
+    ud.leftLeg.rotation.x = lerp(ud.leftLeg.rotation.x, 0.3, dt*8);
+    ud.rightLeg.rotation.x = lerp(ud.rightLeg.rotation.x, 0.3, dt*8);
+    // Arms out slightly
+    ud.leftArm.rotation.x = lerp(ud.leftArm.rotation.x, -0.4, dt*6);
+    ud.rightArm.rotation.x = lerp(ud.rightArm.rotation.x, -0.4, dt*6);
+    ud.leftArm.rotation.z = lerp(ud.leftArm.rotation.z, -0.3, dt*6);
+    ud.rightArm.rotation.z = lerp(ud.rightArm.rotation.z, 0.3, dt*6);
   } else {
-    C.strokeStyle=pants; C.lineWidth=10; C.lineCap='round';
-  }
-  C.beginPath(); C.moveTo(-8,-55); C.lineTo(-8,-6); C.stroke();
-  C.beginPath(); C.moveTo( 8,-55); C.lineTo( 8,-6); C.stroke();
-  C.fillStyle=shoe; C.fillRect(-14,-7,12,7); C.fillRect(2,-7,12,7);
-
-  // torso / shirt
-  C.fillStyle=sCol;
-  C.beginPath(); C.moveTo(-16,-55); C.lineTo(-13,-100);
-  C.quadraticCurveTo(0,-103,13,-100); C.lineTo(16,-55); C.closePath(); C.fill();
-
-  // ── Hands: must touch the rope ends and follow their rotation ──
-  // The rope attaches at this turner's x, at y = HAND_Y in world space.
-  // In the turner's local coords (origin = (x, GND)), that's y = HAND_Y - GND = -ROPE_R = -128.
-  // Each hand drives one rope in a small wrist circle whose vertical component
-  // matches the rope's phase so the hand stays glued to the rope endpoint.
-  var handBaseY = -(GND - HAND_Y);  // -128 in local coords
-  var wristR = 16;                   // radius of the wrist circle
-
-  // hand1 drives rope1 (angle a1), hand2 drives rope2 (angle a2)
-  // vertical tracks rope: wristR * sin(angle)
-  // horizontal tracks depth illusion: wristR * cos(angle) scaled down
-  var h1y = handBaseY + wristR * sin(a1);
-  var h1x = f * 14 + f * wristR * 0.25 * cos(a1);
-  var h2y = handBaseY + wristR * sin(a2);
-  var h2x = f * 8 + f * wristR * 0.25 * cos(a2);
-
-  // arms — connect shoulders to the wrist-circle hand positions
-  var shoulderOutX = f * 14, shoulderOutY = -92;
-  var shoulderInX  = -f * 2,  shoulderInY  = -92;
-
-  C.strokeStyle=skin; C.lineWidth=7; C.lineCap='round';
-  // outer arm → hand1
-  var elbowOut1X = lerp(shoulderOutX, h1x, 0.55) + f*6;
-  var elbowOut1Y = lerp(shoulderOutY, h1y, 0.5) + 8;
-  C.beginPath(); C.moveTo(shoulderOutX, shoulderOutY);
-  C.quadraticCurveTo(elbowOut1X, elbowOut1Y, h1x, h1y); C.stroke();
-  // inner arm → hand2
-  var elbowOut2X = lerp(shoulderInX, h2x, 0.55) + f*4;
-  var elbowOut2Y = lerp(shoulderInY, h2y, 0.5) + 8;
-  C.beginPath(); C.moveTo(shoulderInX, shoulderInY);
-  C.quadraticCurveTo(elbowOut2X, elbowOut2Y, h2x, h2y); C.stroke();
-
-  // hands (fists gripping the rope)
-  C.fillStyle=skin;
-  C.beginPath(); C.arc(h1x, h1y, 5, 0, TAU); C.fill();
-  C.beginPath(); C.arc(h2x, h2y, 5, 0, TAU); C.fill();
-  // knuckle highlight
-  C.fillStyle=skinShd;
-  C.beginPath(); C.arc(h1x + f*2, h1y - 1, 2.5, 0, TAU); C.fill();
-  C.beginPath(); C.arc(h2x + f*2, h2y - 1, 2.5, 0, TAU); C.fill();
-
-  // neck + head
-  C.fillStyle=skin; C.fillRect(-4,-108,8,10);
-  var hY=-124;
-  C.beginPath(); C.arc(0,hY,15,0,TAU); C.fill();
-
-  // ears
-  C.fillStyle=skinShd;
-  C.beginPath(); C.ellipse(-14,hY+1,3.5,4.5,0,0,TAU); C.fill();
-  C.beginPath(); C.ellipse( 14,hY+1,3.5,4.5,0,0,TAU); C.fill();
-
-  if(isGirl){
-    // girl's hair — long, flows down past shoulders with volume
-    C.fillStyle=hair;
-    // top volume
-    C.beginPath(); C.ellipse(0,hY-8,17,13,0,PI,0); C.fill();
-    // sides flowing down
-    C.beginPath();
-    C.moveTo(-17,hY-2);
-    C.quadraticCurveTo(-20,hY+10,-18,hY+30);
-    C.quadraticCurveTo(-15,hY+38,-12,hY+38);
-    C.lineTo(-12,hY-2);
-    C.closePath(); C.fill();
-    C.beginPath();
-    C.moveTo(17,hY-2);
-    C.quadraticCurveTo(20,hY+10,18,hY+30);
-    C.quadraticCurveTo(15,hY+38,12,hY+38);
-    C.lineTo(12,hY-2);
-    C.closePath(); C.fill();
-    // small hair accessory / bead
-    C.fillStyle='#FFD700';
-    C.beginPath(); C.arc(-14,hY+18,2,0,TAU); C.fill();
-    C.beginPath(); C.arc( 14,hY+18,2,0,TAU); C.fill();
-
-    // earrings
-    C.fillStyle='#FFD700';
-    C.beginPath(); C.arc(-14,hY+7,1.8,0,TAU); C.fill();
-    C.beginPath(); C.arc( 14,hY+7,1.8,0,TAU); C.fill();
-  } else {
-    // boy's hair — short, close-cropped
-    C.fillStyle=hair;
-    C.beginPath(); C.ellipse(0,hY-10,14,9,0,PI,0); C.fill();
-  }
-
-  // eyebrow
-  C.strokeStyle=hair; C.lineWidth=1.8; C.lineCap='round';
-  C.beginPath(); C.moveTo(f*1,hY-6); C.lineTo(f*8,hY-7); C.stroke();
-
-  // eye
-  C.fillStyle='#fff'; C.beginPath(); C.ellipse(f*4,hY-2,3.5,3,0,0,TAU); C.fill();
-  C.fillStyle='#2A1A0E'; C.beginPath(); C.arc(f*5,hY-1.5,1.8,0,TAU); C.fill();
-  // highlight
-  C.fillStyle='#fff'; C.beginPath(); C.arc(f*5.6,hY-2.3,0.6,0,TAU); C.fill();
-
-  if(isGirl){
-    // eyelash accent
-    C.strokeStyle=hair; C.lineWidth=1; C.lineCap='round';
-    C.beginPath(); C.moveTo(f*1.5,hY-4); C.lineTo(f*7.5,hY-5); C.stroke();
-  }
-
-  // nose — slightly broader, natural
-  C.strokeStyle=skinShd; C.lineWidth=1.2; C.lineCap='round';
-  C.beginPath(); C.moveTo(f*1.5,hY+0); C.quadraticCurveTo(f*3.5,hY+3.5,f*1.5,hY+2.5); C.stroke();
-
-  // lips — full, warm
-  C.fillStyle=lipCol;
-  C.beginPath();
-  C.moveTo(f*-1,hY+5.5);
-  C.quadraticCurveTo(f*2,hY+4,f*5,hY+5.5);
-  C.quadraticCurveTo(f*2,hY+8,f*-1,hY+5.5);
-  C.fill();
-
-  C.restore();
-}
-
-/* ═══════════════════════════════════
-   BACKGROUND
-   ═══════════════════════════════════ */
-var bldgs=[];
-(function(){
-  for(var bx=20; bx<W; bx += 45+Math.random()*35){
-    bldgs.push({x:bx, h:180+Math.random()*190, w:40+Math.random()*32});
-  }
-})();
-
-function drawBG(){
-  // sky
-  var sg=C.createLinearGradient(0,0,0,GND);
-  sg.addColorStop(0,'#111830'); sg.addColorStop(0.22,'#25345e');
-  sg.addColorStop(0.52,'#b45a2e'); sg.addColorStop(0.78,'#dca04e');
-  sg.addColorStop(1,'#edc478');
-  C.fillStyle=sg; C.fillRect(0,0,W,GND);
-
-  // buildings
-  C.fillStyle='#151525';
-  for(var i=0;i<bldgs.length;i++){
-    var b=bldgs[i];
-    C.fillRect(b.x,GND-b.h,b.w,b.h);
-    C.fillStyle='rgba(255,195,90,.13)';
-    for(var wy=GND-b.h+14; wy<GND-18; wy+=24){
-      for(var wx=b.x+7; wx<b.x+b.w-7; wx+=13){
-        if(((wx*7+wy*3)&7)>2) C.fillRect(wx,wy,5,7);
-      }
+    // Idle — small bounce rhythm if inside ropes
+    if(insideRopes && state==='jumping'){
+      bouncePhase += dt * diff.bpm/60 * PI;
+      ud.leftLeg.rotation.x = sin(bouncePhase)*0.05;
+      ud.rightLeg.rotation.x = sin(bouncePhase+PI)*0.05;
+      ud.hips.position.y = 0.9 + sin(bouncePhase*2)*0.01;
+    } else {
+      ud.leftLeg.rotation.x = lerp(ud.leftLeg.rotation.x, 0, dt*5);
+      ud.rightLeg.rotation.x = lerp(ud.rightLeg.rotation.x, 0, dt*5);
+      ud.leftArm.rotation.x = lerp(ud.leftArm.rotation.x, 0, dt*5);
+      ud.rightArm.rotation.x = lerp(ud.rightArm.rotation.x, 0, dt*5);
+      ud.leftArm.rotation.z = lerp(ud.leftArm.rotation.z, 0, dt*5);
+      ud.rightArm.rotation.z = lerp(ud.rightArm.rotation.z, 0, dt*5);
     }
-    C.fillStyle='#151525';
   }
 
-  // trees
-  C.fillStyle='#0f1a14';
-  for(var tx=0;tx<W;tx+=33){
-    var th=35+((tx*7)%40);
-    C.beginPath(); C.moveTo(tx,GND); C.lineTo(tx+11,GND-th); C.lineTo(tx+22,GND); C.fill();
-  }
-
-  // fence
-  C.strokeStyle='rgba(120,120,120,.2)'; C.lineWidth=1;
-  var fTop=GND-155;
-  C.beginPath(); C.moveTo(0,fTop); C.lineTo(W,fTop); C.stroke();
-  for(var fx=45;fx<W;fx+=95){ C.beginPath(); C.moveTo(fx,fTop); C.lineTo(fx,GND); C.stroke(); }
-  C.strokeStyle='rgba(120,120,120,.07)'; C.lineWidth=0.5;
-  for(var fy=fTop;fy<GND;fy+=11)
-    for(var fx2=0;fx2<W;fx2+=11){
-      C.beginPath(); C.moveTo(fx2,fy); C.lineTo(fx2+5.5,fy+5.5); C.lineTo(fx2+11,fy); C.stroke();
-    }
-
-  // ground
-  var gg=C.createLinearGradient(0,GND,0,H);
-  gg.addColorStop(0,'#484848'); gg.addColorStop(0.3,'#383838'); gg.addColorStop(1,'#282828');
-  C.fillStyle=gg; C.fillRect(0,GND,W,H-GND);
-
-  C.strokeStyle='rgba(255,255,255,.07)'; C.lineWidth=1;
-  C.beginPath(); C.moveTo(0,GND); C.lineTo(W,GND); C.stroke();
-
-  C.strokeStyle='rgba(255,255,255,.05)'; C.lineWidth=2;
-  C.beginPath(); C.arc(CX,GND+38,75,0,TAU); C.stroke();
-
-  C.strokeStyle='rgba(0,0,0,.07)'; C.lineWidth=1;
-  C.beginPath(); C.moveTo(300,GND+20); C.lineTo(390,GND+65); C.stroke();
-  C.beginPath(); C.moveTo(700,GND+15); C.lineTo(780,GND+55); C.stroke();
-  C.beginPath(); C.moveTo(500,GND+40); C.lineTo(560,GND+80); C.stroke();
+  // Squash/stretch
+  jumperSquash = lerp(jumperSquash, 1, dt*6);
+  jumperStretch = lerp(jumperStretch, 1, dt*6);
+  model.scale.set(jumperSquash, jumperStretch, jumperSquash);
 }
 
-/* ═══════════════════════════════════
-   UI / HUD
-   ═══════════════════════════════════ */
-function rr(x,y,w,h,r){
-  C.beginPath(); C.moveTo(x+r,y);
-  C.lineTo(x+w-r,y); C.quadraticCurveTo(x+w,y,x+w,y+r);
-  C.lineTo(x+w,y+h-r); C.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
-  C.lineTo(x+r,y+h); C.quadraticCurveTo(x,y+h,x,y+h-r);
-  C.lineTo(x,y+r); C.quadraticCurveTo(x,y,x+r,y); C.closePath();
+// ═══════════════════════════════════
+//  CAMERA SYSTEM (Third-person GTA-style)
+// ═══════════════════════════════════
+function updateCamera(dt){
+  // Camera follows behind the player's facing direction.
+  // Mouse offsets the view temporarily, but it springs back.
+  const sensitivity = 0.003;
+  const mouseOffsetX = mouseDX * sensitivity;
+  const mouseOffsetY = mouseDY * sensitivity;
+  mouseDX = 0;
+  mouseDY = 0;
+
+  // Target camYaw = behind the player (playerYaw + PI)
+  let targetCamYaw = playerYaw + PI;
+
+  // Allow mouse to offset, but smoothly return
+  camYaw -= mouseOffsetX;
+
+  // Smooth yaw follow — damped spring that slows down on big angle diffs
+  let yawDiff = targetCamYaw - camYaw;
+  while(yawDiff > PI) yawDiff -= TAU;
+  while(yawDiff < -PI) yawDiff += TAU;
+  // Use a soft exponential ease: large diffs → slow proportional catch-up
+  const yawSpeed = 1.8;  // lower = smoother/slower follow
+  camYaw += yawDiff * (1 - Math.exp(-yawSpeed * dt));
+
+  camPitch = clamp(camPitch - mouseOffsetY, -0.4, 1.2);
+
+  // Camera position: smooth follow with damped lerp
+  const target = new Vector3().copy(playerPos);
+  target.y += PLAYER_HEIGHT * 0.65; // look at chest height
+
+  const cx = target.x + camDist * sin(camYaw) * cos(camPitch);
+  const cy = target.y + camDist * sin(camPitch);
+  const cz = target.z + camDist * cos(camYaw) * cos(camPitch);
+
+  // Exponential smoothing for position (frame-rate independent)
+  const posSmooth = 1 - Math.exp(-4.5 * dt);
+  camera.position.lerp(new Vector3(cx, cy, cz), posSmooth);
+  camera.lookAt(target);
 }
 
-function scoreVal(j){
-  var m = Math.max(1, floor(combo/5));
-  return j==='PERFECT'?100*m : j==='GOOD'?50*m : 0;
+// ═══════════════════════════════════
+//  GAME LOGIC
+// ═══════════════════════════════════
+let prevAngle1=0;
+
+function crossedDown(prevA, curA){
+  // Detect when rope crosses the downward position (angle crosses PI/2 + nPI boundary going from above to below)
+  const prev = ((prevA % PI) + PI) % PI;
+  const cur  = ((curA % PI) + PI) % PI;
+  // Rope hits ground when sin(angle) goes from positive toward 0 crossing PI
+  // More simply: detect wrap-around
+  return prev > PI*0.8 && cur < PI*0.2;
 }
 
-function drawHUD(){
-  // score panel
-  C.fillStyle='rgba(0,0,0,.48)'; rr(14,10,175,82,10); C.fill();
-  C.fillStyle='#aaa'; C.font='13px "Segoe UI"'; C.textAlign='left'; C.fillText('SCORE',26,27);
-  C.fillStyle='#FFD700'; C.font='bold 28px "Segoe UI"'; C.fillText(score.toLocaleString(),26,55);
-  if(combo>1){
-    C.fillStyle=combo>10?'#FFD700':combo>5?'#FFA500':'#fff';
-    C.font='bold 18px "Segoe UI"'; C.fillText(combo+'x COMBO',26,80);
-  }
-
-  // flow bar
-  C.fillStyle='rgba(0,0,0,.42)'; rr(W-192,10,178,55,10); C.fill();
-  C.fillStyle='#aaa'; C.font='12px "Segoe UI"'; C.textAlign='right'; C.fillText('FLOW',W-26,27);
-  C.fillStyle='rgba(255,255,255,.13)'; rr(W-182,35,155,16,6); C.fill();
-  var fw=155*(flow/100);
-  if(fw>1){
-    var fg=C.createLinearGradient(W-182,0,W-27,0);
-    fg.addColorStop(0,'#2ECC71'); fg.addColorStop(0.5,'#F1C40F'); fg.addColorStop(1,'#E74C3C');
-    C.fillStyle=fg; rr(W-182,35,fw,16,6); C.fill();
-  }
-
-  // difficulty label
-  C.fillStyle='rgba(0,0,0,.32)'; rr(CX-52,10,104,22,6); C.fill();
-  C.fillStyle='#999'; C.font='11px "Segoe UI"'; C.textAlign='center';
-  C.fillText(diff.label.toUpperCase()+' \u00B7 '+diff.bpm+' BPM',CX,26);
-
-  if(state==='jumping'){
-    var m2=floor(gTime/60), s2=floor(gTime%60);
-    C.fillStyle='rgba(255,255,255,.35)'; C.font='13px "Segoe UI"'; C.textAlign='right';
-    C.fillText(m2+':'+(s2<10?'0':'')+s2, W-18, H-18);
-  }
-  C.textAlign='left';
-}
-
-function drawJudgment(){
-  if(jdgT<=0||!jdg) return;
-  var a2=Math.min(1,jdgT*2.5), rise=(1-jdgT)*28;
-  C.save(); C.globalAlpha=a2; C.textAlign='center';
-  var col,sz;
-  if(jdg==='PERFECT'){ col='#FFD700';sz=30; }
-  else if(jdg==='GOOD'){ col='#2ECC71';sz=26; }
-  else { col='#E74C3C';sz=24; }
-  C.font='bold '+sz+'px "Segoe UI"'; C.shadowColor=col; C.shadowBlur=12;
-  C.fillStyle=col; C.fillText(jdg, jx, jdgY-rise);
-  if(jdg==='PERFECT'){
-    C.font='bold 15px "Segoe UI"'; C.fillStyle='rgba(255,215,0,.7)';
-    C.fillText('+'+scoreVal('PERFECT'), jx, jdgY-rise+22);
-  }
-  C.shadowBlur=0; C.restore(); C.textAlign='left';
-}
-
-/* ═══════════════════════════════════
-   MENU SCREEN
-   ═══════════════════════════════════ */
-function drawMenu(){
-  drawBG();
-  menuRA+=0.018;
-  drawRope(ropePoints(menuRA+PI),'#1a6898','#3498db');
-  drawTurner(TL_X,'L',menuRA,menuRA+PI);
-  drawTurner(TR_X,'R',menuRA,menuRA+PI);
-  drawRope(ropePoints(menuRA),'#a83028','#e74c3c');
-
-  C.fillStyle='rgba(0,0,0,.52)'; C.fillRect(0,0,W,H);
-
-  menuBounce+=0.028;
-  var tY=158+sin(menuBounce)*5;
-  C.save(); C.textAlign='center';
-
-  C.fillStyle='rgba(0,0,0,.5)'; C.font='bold 70px "Segoe UI"';
-  C.fillText('DOUBLE DUTCH',CX+3,tY+3);
-  C.fillStyle='#FFD700'; C.shadowColor='#FFD700'; C.shadowBlur=22;
-  C.fillText('DOUBLE DUTCH',CX,tY); C.shadowBlur=0;
-
-  C.fillStyle='rgba(255,255,255,.65)'; C.font='20px "Segoe UI"';
-  C.fillText('Rhythm & Rope Simulator',CX,tY+38);
-  C.fillStyle='rgba(255,255,255,.35)'; C.font='italic 13px "Segoe UI"';
-  C.fillText('Honoring a tradition of rhythm, community, and Black culture',CX,tY+62);
-
-  var sY=330;
-  C.fillStyle='rgba(255,255,255,.45)'; C.font='14px "Segoe UI"';
-  C.fillText('\u25B2  \u25BC  SELECT DIFFICULTY',CX,sY-18);
-
-  for(var i=0;i<DIFFS.length;i++){
-    var d=DIFFS[i], dx=CX+(i-dIdx)*128, sel=(i===dIdx);
-    var al=sel?1:0.3, sc=sel?1.12:0.82;
-    C.globalAlpha=al;
-    C.fillStyle=sel?'#FFD700':'#888'; C.font=(sel?'bold ':'')+(18*sc|0)+'px "Segoe UI"';
-    C.fillText(d.label,dx,sY+8);
-    C.fillStyle=sel?'#fff':'#666'; C.font=(13*sc|0)+'px "Segoe UI"';
-    C.fillText(d.bpm+' BPM',dx,sY+27);
-  }
-  C.globalAlpha=1;
-
-  C.globalAlpha=0.5+sin(Date.now()/380)*0.3;
-  C.fillStyle='#fff'; C.font='bold 24px "Segoe UI"';
-  C.fillText('PRESS  SPACE  TO  START',CX,450);
-  C.globalAlpha=1;
-
-  C.fillStyle='rgba(255,255,255,.32)'; C.font='14px "Segoe UI"';
-  C.fillText('\u2190 \u2192  Move   |   SPACE  Jump   |   \u2191 \u2193  Difficulty',CX,510);
-  C.fillText('Walk into the ropes with arrow keys, then jump to the beat!',CX,533);
-  C.fillText('ESC to end a round early',CX,556);
-
-  C.restore();
-}
-
-/* ═══════════════════════════════════
-   SCORE SCREEN
-   ═══════════════════════════════════ */
-function drawScoreScreen(){
-  drawBG();
-  C.fillStyle='rgba(0,0,0,.68)'; C.fillRect(0,0,W,H);
-  C.save(); C.textAlign='center';
-
-  C.fillStyle='#FFD700'; C.font='bold 48px "Segoe UI"';
-  C.fillText('ROUND OVER',CX,115);
-
-  var rows=[
-    ['Score',score.toLocaleString()],['Max Combo',maxCombo+'x'],
-    ['Total Jumps',''+totalJ],['Perfect',''+perfC],
-    ['Good',''+goodC],['Failed',''+okC],
-    ['Time',fmtTime(totalTime)]
-  ];
-  var sy=170;
-  C.font='17px "Segoe UI"';
-  for(var i=0;i<rows.length;i++){
-    C.fillStyle='rgba(255,255,255,.45)'; C.textAlign='right'; C.fillText(rows[i][0],CX-18,sy);
-    C.fillStyle='#fff'; C.textAlign='left'; C.fillText(rows[i][1],CX+18,sy);
-    sy+=33;
-  }
-
-  var tot=perfC+goodC+okC;
-  var acc=tot>0?(perfC*3+goodC*2)/(tot*3):0;
-  var gr,gc;
-  if(acc>0.9){gr='S';gc='#FFD700';}else if(acc>0.75){gr='A';gc='#2ECC71';}
-  else if(acc>0.6){gr='B';gc='#3498DB';}else if(acc>0.4){gr='C';gc='#F1C40F';}
-  else{gr='D';gc='#E74C3C';}
-
-  C.textAlign='center'; C.fillStyle=gc; C.shadowColor=gc; C.shadowBlur=22;
-  C.font='bold 78px "Segoe UI"'; C.fillText(gr,CX,sy+55); C.shadowBlur=0;
-
-  C.globalAlpha=0.5+sin(Date.now()/380)*0.3;
-  C.fillStyle='#fff'; C.font='19px "Segoe UI"';
-  C.fillText('PRESS SPACE TO RETURN',CX,H-55);
-  C.globalAlpha=1; C.restore();
-}
-function fmtTime(t){ var m=floor(t/60),s=floor(t%60); return m+':'+(s<10?'0':'')+s; }
-
-/* ═══════════════════════════════════
-   RESET / START
-   ═══════════════════════════════════ */
 function reset(){
+  score=0; combo=0; maxCombo=0; flow=50; composure=100; accuracy=100;
+  totalJ=0; perfC=0; goodC=0;
+  jumpedBeat=false; beatFlash=0; graceBeats=0;
   rAngle=0; rSpeed=0;
-  jx=TL_X-75; jy=GND; jvy=0; airborne=false;
-  insideRopes=false;
-  score=0; combo=0; maxCombo=0; flow=0;
-  totalJ=0; perfC=0; goodC=0; okC=0;
-  tangled=false; tangleProg=0; tangleWait=0; shake=0;
-  jdg=''; jdgT=0;
-  jumpedBeat=false; tSinceBeat=9; beatFlash=0; beatPulse=0;
-  graceBeats=GRACE_COUNT;
-  sq=1; st=1; lean=0; armA=0;
+  tangled=false; tangleProg=0; tangleWait=0;
+  jdg=''; jdgTimer=0;
   gTime=0; totalTime=0;
-  parts.length=0;
+  insideRopes=false;
+  playerAirborne=false;
+  playerVelY=0; playerVelX=0; playerVelZ=0;
+  playerPos.set(0, 0, 5);
+  playerYaw = PI;
+  camYaw=0; camPitch=0.25;
+
+  // Ropes will recompute their shape each frame from angle — no reset needed
 }
 
 function startGame(){
-  diff=DIFFS[dIdx];
   reset();
-  state='jumping';
-  gTime=0;
+  state = 'freeroam';
+  $centerMsg.style.display = 'none';
+  ['scorePanel','flowPanel','composure','accuracy','diffLabel','timer'].forEach(
+    id => document.getElementById(id).style.display=''
+  );
+  $diffLabel.textContent = diff.label.toUpperCase()+' · '+diff.bpm+' BPM';
+  $prompt.style.display = '';
+  $prompt.textContent = 'Walk to the rope zone and press SPACE to begin jumping';
+  rSpeed = PI * diff.bpm / 60; // rad/s
 }
 
-/* ═══════════════════════════════════
-   BEAT‑CROSSING DETECTOR
-   ═══════════════════════════════════ */
-function crossedAngle(prev, curr, target){
-  if(prev<=target && curr>target) return true;
-  if(prev>curr){            // wrapped around TAU
-    if(prev<=target+TAU && curr+TAU>target+TAU) return true;
-    // also check if target is near 0 and we wrapped
-    if(target<=curr) return true;
-  }
-  return false;
-}
-
-/* ═══════════════════════════════════
-   UPDATE
-   ═══════════════════════════════════ */
-function update(dt){
-  if(dt>0.1) dt=0.1;
-
-  /* ── MENU ── */
-  if(state==='menu'){
-    if(pressed('ArrowUp'))    dIdx=Math.max(0,dIdx-1);
-    if(pressed('ArrowDown'))  dIdx=Math.min(DIFFS.length-1,dIdx+1);
-    if(pressed('Space')) startGame();
-    return;
-  }
-
-  /* ── SCORE ── */
-  if(state==='score'){
-    if(pressed('Space')) state='menu';
-    return;
-  }
-
-  /* ── TANGLED ── */
-  if(state==='tangled'){
-    gTime+=dt; totalTime=gTime;
-    tangleProg=Math.min(1, tangleProg+dt*1.2);
-    rSpeed=lerp(rSpeed,0,0.06); rAngle+=rSpeed*dt;
-    lean=lerp(lean, tangleType==='clip'?-0.1:0.11, 0.03);
-    sq=lerp(sq,1.08,0.02); st=lerp(st,0.92,0.02);
-    shake*=0.91;
-    if(pressed('Space')){ state='score'; tangleWait=0; return; }
-    if(tangleProg>=1){
-      tangleWait+=dt;
-      if(tangleWait>1.6){ state='score'; tangleWait=0; }
-    }
-    return;
-  }
-
-  /* ── JUMPING (main gameplay) ── */
-  gTime+=dt; totalTime=gTime;
-
-  var tgt2 = PI*diff.bpm/60;
-  rSpeed = lerp(rSpeed, tgt2, 0.06);
-  var prevA = rAngle;
-  rAngle += rSpeed*dt;
-
-  // ── arrow‑key movement ──
-  var ropeLeft  = TL_X + 40;   // inner edge of rope zone
-  var ropeRight = TR_X - 40;
-  if(keys['ArrowLeft'])  jx -= MOVE_SPEED*dt;
-  if(keys['ArrowRight']) jx += MOVE_SPEED*dt;
-  jx = clamp(jx, TL_X - 100, TR_X + 100);  // allow standing outside
-
-  // detect if inside the rope zone
-  var wasInside = insideRopes;
-  insideRopes = (jx > ropeLeft && jx < ropeRight);
-  if(insideRopes && !wasInside){
-    // just entered the ropes!
-    graceBeats = GRACE_COUNT;
-    sfx('entry');
-  }
-
-  // normalize angles for beat detection
-  var normA = function(a){ return ((a%TAU)+TAU)%TAU; };
-  var pn = normA(prevA), cn = normA(rAngle);
-
-  // detect when each rope hits the ground:
-  // rope 1 ground contact at angle = PI/2  (sin(PI/2)=1 → max downward)
-  // rope 2 ground contact at angle = 3PI/2 (rope2 = rAngle+PI, so sin(3PI/2+PI)=sin(5PI/2)=1)
-  var newBeat = false;
-  var rope1Down = false, rope2Down = false;
-  if(crossedAngle(pn,cn,PI*0.5)){ newBeat=true; curBeat=1; rope1Down=true; }
-  if(crossedAngle(pn,cn,PI*1.5)){ newBeat=true; curBeat=2; rope2Down=true; }
-
-  if(newBeat){
-    beatFlash=1; beatPulse=1;
-    // rope slap sound only when a rope touches the ground
-    if(rope1Down || rope2Down){
-      sfx('slap',0.85);
-      emit(CX+rand(-18,18), GND, 5, DUST);
-    }
-
-    // only penalise if the player is inside the rope zone
-    if(insideRopes){
-      if(graceBeats>0){
-        graceBeats--;
-      } else if(!jumpedBeat && !airborne && jy>=GND-4){
-        handleMiss();
-      }
-    }
-    jumpedBeat=false;
-    tSinceBeat=0;
-  }
-  tSinceBeat+=dt;
-
-  // jump input — HOLD space to keep bouncing (auto-jump on landing)
-  if(!tangled && (pressed('Space') || (keys['Space'] && !airborne))){
-    if(!airborne){
-      jvy=JUMP_V; airborne=true;
-      sq=0.78; st=1.28; armA=-0.5;
-      sfx('jump');
-      // only count as a scored jump if inside the ropes
-      if(insideRopes){
-        totalJ++;
-        jumpedBeat=true;
-        judgeJump();
-      }
-    }
-  }
-
-  // jumper physics
-  if(airborne){
-    jvy+=GRAV; jy+=jvy;
-    if(jy>=GND){
-      jy=GND; jvy=0; airborne=false;
-      sq=1.18; st=0.86;
-      sfx('land');
-      emit(jx,GND,3,{vx:-1,VX:1,vy:-1.5,VY:-0.3,d:0.02,D:0.04,r:1,R:3,cols:DUST.cols,g:0.08});
-    }
-  }
-
-  // ESC to quit
-  if(pressed('Escape')){ state='score'; }
-
-  // animation
-  sq=lerp(sq,1,0.12); st=lerp(st,1,0.12);
-  if(airborne) armA=lerp(armA,-0.3,0.1);
-  else armA=lerp(armA,sin(rAngle*2)*0.15,0.08);
-  lean=lerp(lean,0,0.05);
-  flow=Math.max(0,flow-dt*2.5);
-
-  beatFlash*=0.88; shake*=0.88;
-  jdgT-=dt*1.3;
+function startTangle(){
+  if(tangled) return;
+  tangled = true;
+  tangleProg = 0;
+  tangleWait = 0;
+  state = 'tangled';
+  sfx('tangle');
+  sfx('miss');
+  composure = Math.max(0, composure-30);
 }
 
 function judgeJump(){
-  var beatInt = PI/rSpeed;
-  var aInBeat = ((rAngle%PI)+PI)%PI;
-  var distNext = PI/2 - abs(aInBeat - PI/2);
-  var tDist = distNext/rSpeed;
-  var minD = Math.min(tSinceBeat, abs(beatInt-tSinceBeat), tDist);
+  const beatPhase = ((rAngle % PI) + PI) % PI;
+  const w = diff.win;
+  // How close to the beat (0 = perfect)
+  const dist = Math.min(beatPhase, PI - beatPhase) / PI;
 
-  var w = diff.win;
-  var j;
-  if(minD < w*0.35){
-    j='PERFECT'; perfC++; sfx('perfect'); emit(jx,jy-60,8,SPARK);
-  } else if(minD < w*0.65){
-    j='GOOD'; goodC++; sfx('good');
+  if(dist < w * 0.35){
+    jdg = 'PERFECT'; jdgTimer = 0.6;
+    score += 150 * (1 + combo*0.1);
+    combo++; perfC++;
+    flow = Math.min(100, flow + 5);
+    composure = Math.min(100, composure + 2);
+    accuracy = Math.min(100, accuracy + 3);
+    sfx('perfect');
+    emit3D(playerModel.position.clone().add(new Vector3(0,0.5,0)), 8, SPARK_CFG);
+    beatFlash = 0.3;
+  } else if(dist < w * 0.65){
+    jdg = 'GOOD'; jdgTimer = 0.5;
+    score += 80 * (1 + combo*0.05);
+    combo++; goodC++;
+    flow = Math.min(100, flow + 2);
+    accuracy = Math.min(100, accuracy + 1);
+    sfx('good');
+    beatFlash = 0.15;
   } else {
-    j='FAILED'; okC++; sfx('miss'); combo=0; flow=Math.max(0,flow-10);
-    jdg=j; jdgT=0.8; jdgY=jy-80;
-    startTangle(curBeat||1);
-    return;
+    jdg = 'FAILED'; jdgTimer = 0.5;
+    combo = 0; flow = Math.max(0, flow-15);
+    composure = Math.max(0, composure-15);
+    accuracy = Math.max(0, accuracy-10);
+    sfx('miss');
+    if(graceBeats > 0){
+      graceBeats--;
+    } else {
+      startTangle();
+    }
   }
-  combo++; if(combo>maxCombo) maxCombo=combo;
-  score += scoreVal(j);
-  flow = Math.min(100, flow+(j==='PERFECT'?8:j==='GOOD'?5:2));
-  jdg=j; jdgT=0.8; jdgY=jy-80;
+  score = Math.round(score);
+  maxCombo = Math.max(maxCombo, combo);
+  totalJ++;
+  jumpedBeat = true;
 }
 
 function handleMiss(){
-  if(tangled) return;
-  okC++; combo=0; flow=Math.max(0,flow-18);
-  jdg='FAILED'; jdgT=1; jdgY=jy-80; sfx('miss');
-  // any miss outside of grade period = instant tangle
-  startTangle(curBeat||1);
+  jdg = 'FAILED'; jdgTimer = 0.5;
+  combo = 0; flow = Math.max(0, flow-20);
+  composure = Math.max(0, composure-20);
+  accuracy = Math.max(0, accuracy-15);
+  sfx('miss');
+  if(graceBeats > 0){
+    graceBeats--;
+  } else {
+    startTangle();
+  }
 }
 
-function startTangle(who){
-  if(tangled) return;
-  tangled=true; tangleProg=0; tangleWho=who; tangleWait=0;
-  shake=22; lean=rand(-0.14,0.14);
-  tangleType=['step','clip','shin'][(Math.random()*3)|0];
-  sfx('tangle'); emit(jx,GND,14,TPART);
-  combo=0; flow=0;
-  state='tangled';
+function showScoreScreen(){
+  state = 'score';
+  const pct = totalJ>0 ? Math.round(((perfC+goodC)/totalJ)*100) : 0;
+  const m = floor(totalTime/60), s = floor(totalTime%60);
+  $centerMsg.innerHTML = `
+    <h1 style="font-size:36px;color:#FFD700">TANGLED!</h1>
+    <div class="sub" style="margin-top:14px">
+      <div style="font-size:28px;color:#FFD700">${score}</div>
+      <div style="font-size:14px;color:#aaa;margin-top:6px">POINTS</div>
+    </div>
+    <div style="margin-top:18px;font-size:14px;color:#ccc;line-height:2">
+      Jumps: ${totalJ} &nbsp;|&nbsp; Perfect: ${perfC} &nbsp;|&nbsp; Good: ${goodC}<br>
+      Max Combo: ${maxCombo} &nbsp;|&nbsp; Accuracy: ${pct}%<br>
+      Time: ${m}:${s<10?'0':''}${s}
+    </div>
+    <div class="keys" style="margin-top:20px">Press ENTER to return to menu</div>
+  `;
+  $centerMsg.style.display = '';
+  ['scorePanel','flowPanel','composure','accuracy','diffLabel','timer','prompt'].forEach(
+    id => { const el=document.getElementById(id); if(el) el.style.display='none'; }
+  );
 }
 
-/* ═══════════════════════════════════
-   DRAW
-   ═══════════════════════════════════ */
-function draw(){
-  C.clearRect(0,0,W,H);
+function showMenu(){
+  state = 'menu';
+  $centerMsg.innerHTML = `
+    <h1>DOUBLE DUTCH 3D</h1>
+    <div class="sub">Third-Person Rhythm &amp; Rope Simulator</div>
+    <div class="diff-row">
+      <span class="diff-arrow" id="diffLeft">◀</span>
+      <span class="diff-label" id="diffDisplay">${diff.label.toUpperCase()} · ${diff.bpm} BPM</span>
+      <span class="diff-arrow" id="diffRight">▶</span>
+    </div>
+    <div class="keys">
+      WASD / Arrows — Move &nbsp;|&nbsp; SPACE — Jump &nbsp;|&nbsp; Mouse — Look<br>
+      Click arrows or ↑↓ to change difficulty &nbsp;|&nbsp; ENTER — Start
+    </div>
+  `;
+  bindDiffArrows();
+  $centerMsg.style.display = '';
+  $prompt.style.display = 'none';
+  ['scorePanel','flowPanel','composure','accuracy','diffLabel','timer'].forEach(
+    id => document.getElementById(id).style.display='none'
+  );
+}
 
-  var shaking = shake>0.4;
-  if(shaking){ C.save(); C.translate(rand(-shake,shake),rand(-shake,shake)); }
+function updateDiffDisplay(){
+  const dd = document.getElementById('diffDisplay');
+  if(dd) dd.textContent = diff.label.toUpperCase() + ' \u00b7 ' + diff.bpm + ' BPM';
+}
 
-  if(state==='menu') drawMenu();
-  else if(state==='score') drawScoreScreen();
-  else drawScene();
+function changeDiff(delta){
+  dIdx = clamp(dIdx + delta, 0, DIFFS.length - 1);
+  diff = DIFFS[dIdx];
+  updateDiffDisplay();
+  initAudio();
+}
 
-  if(shaking) C.restore();
+function bindDiffArrows(){
+  const leftBtn = document.getElementById('diffLeft');
+  const rightBtn = document.getElementById('diffRight');
+  if(leftBtn) leftBtn.addEventListener('click', e => { e.stopPropagation(); changeDiff(-1); });
+  if(rightBtn) rightBtn.addEventListener('click', e => { e.stopPropagation(); changeDiff(1); });
+}
 
-  // prompt: walk in or jump
-  if(state==='jumping' && !tangled){
-    if(!insideRopes){
-      // player is outside the ropes
-      C.save(); C.textAlign='center';
-      C.globalAlpha=0.65+sin(Date.now()/260)*0.25;
-      C.fillStyle='rgba(0,0,0,.5)'; rr(CX-185,155,370,52,12); C.fill();
-      C.globalAlpha=0.9;
-      C.fillStyle='#FFD700'; C.font='bold 20px "Segoe UI"';
-      C.fillText('\u2192  Walk into the ropes with arrow keys!',CX,188);
-      C.restore();
-    } else if(gTime<5){
-      // just entered — remind to jump
-      var promptA = gTime<3 ? 1 : Math.max(0,1-(gTime-3)/2);
-      if(promptA>0){
-        C.save(); C.textAlign='center';
-        C.globalAlpha=promptA*(0.6+sin(Date.now()/200)*0.25);
-        C.fillStyle='rgba(0,0,0,.5)'; rr(CX-170,160,340,52,12); C.fill();
-        C.globalAlpha=promptA;
-        C.fillStyle='#fff'; C.font='bold 22px "Segoe UI"';
-        C.fillText('\u2B06  HOLD SPACE TO JUMP  \u2B06',CX,192);
-        C.restore();
+// ═══════════════════════════════════
+//  UPDATE LOOP
+// ═══════════════════════════════════
+function update(dt){
+  dt = Math.min(dt, 0.05); // cap
+
+  // Judgment fade
+  if(jdgTimer > 0){
+    jdgTimer -= dt;
+    $judgment.style.opacity = Math.min(1, jdgTimer*3);
+    if(jdg==='PERFECT') $judgment.style.color = '#FFD700';
+    else if(jdg==='GOOD') $judgment.style.color = '#2ECC71';
+    else $judgment.style.color = '#E74C3C';
+    $judgment.textContent = jdg;
+  } else {
+    $judgment.style.opacity = 0;
+  }
+  beatFlash = Math.max(0, beatFlash - dt);
+
+  // ── MENU ──
+  if(state === 'menu'){
+    // Difficulty selection (keyboard)
+    if(pressed('ArrowUp'))   changeDiff(1);
+    if(pressed('ArrowDown')) changeDiff(-1);
+    if(pressed('Enter') || pressed('Space')){
+      renderer.domElement.requestPointerLock();
+      startGame();
+      startAmbience();
+    }
+
+    // Idle rope animation — uses selected difficulty BPM
+    rAngle += dt * PI * diff.bpm/60;
+    ropeAngle1 = rAngle;
+    ropeAngle2 = rAngle + PI;
+
+    const ep1L = getRopeEndpoint(ropeAngle1);
+    const ep1R = getRopeEndpoint(ropeAngle1);
+    rope1.computeShape(ropeAngle1, ep1L.y, ep1L.z, ep1R.y, ep1R.z);
+    rope1.updateVisual();
+
+    const ep2L = getRopeEndpoint(ropeAngle2);
+    const ep2R = getRopeEndpoint(ropeAngle2);
+    rope2.computeShape(ropeAngle2, ep2L.y, ep2L.z, ep2R.y, ep2R.z);
+    rope2.updateVisual();
+
+    // Animate turners idle
+    animateTurner(turnerLModel, ropeAngle1, ropeAngle2, dt, 'L');
+    animateTurner(turnerRModel, ropeAngle1, ropeAngle2, dt, 'R');
+
+    // Slow camera orbit
+    camYaw += dt * 0.15;
+    const cx = camDist*2 * sin(camYaw);
+    const cz = camDist*2 * cos(camYaw);
+    camera.position.lerp(new Vector3(cx, 3, cz), dt*2);
+    camera.lookAt(new Vector3(0, 1, 0));
+
+    return;
+  }
+
+  // ── SCORE ──
+  if(state === 'score'){
+    if(pressed('Enter') || pressed('Space')){
+      showMenu();
+      reset();
+    }
+    // Keep camera
+    camera.lookAt(new Vector3(0, 1, 0));
+    return;
+  }
+
+  // ── TANGLED ──
+  if(state === 'tangled'){
+    gTime += dt; totalTime = gTime;
+    tangleProg = Math.min(1, tangleProg + dt*1.2);
+    rSpeed = lerp(rSpeed, 0, 0.06);
+    rAngle += rSpeed * dt;
+
+    // Update ropes with tangle
+    ropeAngle1 = rAngle;
+    ropeAngle2 = rAngle + PI;
+    const ep1L = getRopeEndpoint(ropeAngle1);
+    rope1.computeShape(ropeAngle1, ep1L.y, ep1L.z, ep1L.y, ep1L.z);
+    rope1.applyTangle(tangleProg);
+    rope1.updateVisual();
+    const ep2L = getRopeEndpoint(ropeAngle2);
+    rope2.computeShape(ropeAngle2, ep2L.y, ep2L.z, ep2L.y, ep2L.z);
+    rope2.applyTangle(tangleProg);
+    rope2.updateVisual();
+
+    // Player stumble animation
+    jumperLean = lerp(jumperLean, 0.15, dt*2);
+    if(playerModel){
+      playerModel.rotation.z = jumperLean;
+      playerModel.rotation.x = sin(gTime*3)*0.05*tangleProg;
+    }
+
+    if(pressed('Space')){ showScoreScreen(); return; }
+    if(tangleProg >= 1){
+      tangleWait += dt;
+      if(tangleWait > 2){ showScoreScreen(); }
+    }
+
+    updateCamera(dt);
+    tickParticles(dt);
+    return;
+  }
+
+  // ── FREEROAM / JUMPING ──
+  gTime += dt; totalTime = gTime;
+
+  // Player movement — relative to camera facing direction
+  let inputFwd = 0, inputRight = 0;
+  if(keys['KeyW'] || keys['ArrowUp'])    inputFwd  += 1;
+  if(keys['KeyS'] || keys['ArrowDown'])  inputFwd  -= 1;
+  if(keys['KeyA'] || keys['ArrowLeft'])  inputRight += 1;
+  if(keys['KeyD'] || keys['ArrowRight']) inputRight -= 1;
+
+  // Normalize diagonal input
+  const inputLen = Math.sqrt(inputFwd*inputFwd + inputRight*inputRight);
+  if(inputLen > 0.01){
+    const nFwd = inputFwd / inputLen;
+    const nRight = inputRight / inputLen;
+    // Camera forward/right vectors projected onto XZ plane
+    const fwdX = -sin(camYaw), fwdZ = -cos(camYaw);
+    const rgtX = fwdZ,          rgtZ = -fwdX;   // perpendicular
+    // World-space input direction
+    const worldX = nFwd * fwdX + nRight * rgtX;
+    const worldZ = nFwd * fwdZ + nRight * rgtZ;
+    // Accelerate toward desired direction
+    playerVelX += worldX * PLAYER_ACCEL * dt;
+    playerVelZ += worldZ * PLAYER_ACCEL * dt;
+  } else {
+    // Friction: decelerate smoothly to stop
+    playerVelX -= playerVelX * PLAYER_FRICTION * dt;
+    playerVelZ -= playerVelZ * PLAYER_FRICTION * dt;
+  }
+
+  // Clamp horizontal speed
+  const hSpeed = Math.sqrt(playerVelX*playerVelX + playerVelZ*playerVelZ);
+  if(hSpeed > PLAYER_SPEED){
+    playerVelX *= PLAYER_SPEED / hSpeed;
+    playerVelZ *= PLAYER_SPEED / hSpeed;
+  }
+
+  // Apply movement
+  playerPos.x += playerVelX * dt;
+  playerPos.z += playerVelZ * dt;
+
+  // Face movement direction (smooth)
+  if(hSpeed > 0.3){
+    const targetYaw = Math.atan2(playerVelX, playerVelZ);
+    // Smooth angle interpolation
+    let diff2 = targetYaw - playerYaw;
+    while(diff2 > PI) diff2 -= TAU;
+    while(diff2 < -PI) diff2 += TAU;
+    playerYaw += diff2 * Math.min(1, dt * 10);
+  }
+
+  // Clamp to play area
+  playerPos.x = clamp(playerPos.x, -20, 20);
+  playerPos.z = clamp(playerPos.z, -20, 20);
+
+  // Jump / gravity
+  if(!playerAirborne && (pressed('Space') || (keys['Space'] && insideRopes))){
+    playerVelY = JUMP_FORCE;
+    playerAirborne = true;
+    sfx('jump');
+    jumperSquash = 1.15;
+    jumperStretch = 0.88;
+
+    if(insideRopes && state==='jumping'){
+      judgeJump();
+    }
+  }
+
+  playerVelY += GRAVITY * dt;
+  playerPos.y += playerVelY * dt;
+
+  if(playerPos.y <= 0){
+    playerPos.y = 0;
+    if(playerAirborne){
+      playerAirborne = false;
+      sfx('land');
+      emit3D(playerModel.position.clone(), 4, DUST_CFG);
+      jumperSquash = 0.9;
+      jumperStretch = 1.12;
+    }
+    playerVelY = 0;
+  }
+
+  // Check if inside rope zone
+  const prevInside = insideRopes;
+  const distFromCenter = Math.sqrt(playerPos.x**2 + playerPos.z**2);
+  insideRopes = (Math.abs(playerPos.x) < TURNER_DIST * 0.7) && (Math.abs(playerPos.z) < 1.0);
+
+  if(!prevInside && insideRopes && state==='freeroam'){
+    state = 'jumping';
+    graceBeats = GRACE_COUNT;
+    sfx('entry');
+    $prompt.textContent = 'HOLD SPACE to jump in rhythm!';
+    setTimeout(() => { $prompt.style.display = 'none'; }, 3000);
+  }
+
+  // Rope speed
+  const tgtSpeed = PI * diff.bpm / 60;
+  rSpeed = lerp(rSpeed, tgtSpeed, 0.06);
+
+  // Advance rope angle
+  prevAngle1 = rAngle;
+  rAngle += rSpeed * dt;
+  ropeAngle1 = rAngle;
+  ropeAngle2 = rAngle + PI;
+
+  // Beat detection
+  if(crossedDown(prevAngle1, rAngle)){
+    if(insideRopes && state==='jumping'){
+      if(!jumpedBeat && graceBeats <= 0){
+        handleMiss();
+      }
+      if(graceBeats > 0) graceBeats--;
+    }
+    jumpedBeat = false;
+  }
+
+  // Rope collision check (when jumping inside) — forgiving thresholds
+  if(insideRopes && state==='jumping' && !tangled){
+    const r1min = rope1.getMinYNearCenter(0.4);
+    const r2min = rope2.getMinYNearCenter(0.4);
+    const feetY = playerPos.y + 0.02;
+
+    // Only trigger if rope is very close to ground AND feet are below rope
+    if((r1min < 0.12 && feetY < r1min + 0.05) || (r2min < 0.12 && feetY < r2min + 0.05)){
+      if(!playerAirborne && graceBeats <= 0){
+        // Standing on the rope = tangle
+        startTangle();
       }
     }
-    // grace period indicator
-    if(insideRopes && graceBeats>0){
-      C.save(); C.textAlign='center';
-      C.globalAlpha=0.6;
-      C.fillStyle='#2ECC71'; C.font='bold 14px "Segoe UI"';
-      C.fillText('SAFE \u2014 '+graceBeats+' free beats left',CX,230);
-      C.restore();
-    }
   }
+
+  // Rope shape
+  const ep1L = getRopeEndpoint(ropeAngle1);
+  const ep1R = getRopeEndpoint(ropeAngle1);
+  rope1.computeShape(ropeAngle1, ep1L.y, ep1L.z, ep1R.y, ep1R.z);
+  if(tangled) rope1.applyTangle(tangleProg);
+  rope1.updateVisual();
+
+  const ep2L = getRopeEndpoint(ropeAngle2);
+  const ep2R = getRopeEndpoint(ropeAngle2);
+  rope2.computeShape(ropeAngle2, ep2L.y, ep2L.z, ep2R.y, ep2R.z);
+  if(tangled) rope2.applyTangle(tangleProg);
+  rope2.updateVisual();
+
+  // Turner anim
+  animateTurner(turnerLModel, ropeAngle1, ropeAngle2, dt, 'L');
+  animateTurner(turnerRModel, ropeAngle1, ropeAngle2, dt, 'R');
+
+  // Flow decay
+  flow = Math.max(0, flow - dt*2);
+
+  // Update model
+  playerModel.position.copy(playerPos);
+  playerModel.rotation.y = playerYaw;
+  jumperLean = lerp(jumperLean, 0, dt*5);
+  playerModel.rotation.z = jumperLean;
+
+  animatePlayer(playerModel, dt);
+  updateCamera(dt);
+  tickParticles(dt);
+
+  // HUD updates
+  $score.textContent = score;
+  $combo.textContent = combo > 1 ? combo + 'x COMBO' : '';
+  $jumps.textContent = totalJ;
+  $flowFill.style.width = flow + '%';
+  $compFill.style.width = composure + '%';
+  $accFill.style.width = accuracy + '%';
+  const m = floor(gTime/60), s = floor(gTime%60);
+  $timer.textContent = m + ':' + (s<10?'0':'') + s;
 }
 
-function drawScene(){
-  drawBG();
+// ═══════════════════════════════════
+//  MAIN LOOP
+// ═══════════════════════════════════
+let lastTime = 0;
 
-  var a1=rAngle, a2=rAngle+PI;
-  var z1=cos(a1), z2=cos(a2);
-
-  // compute rope shapes (with tangle deformation)
-  var p1, p2;
-  if(tangled && tangleWho===1){
-    p1=deformedRope(a1,0.5,tangleProg,jx,GND);
-    p2= tangleProg>0.45? deformedRope(a2,0.5,(tangleProg-0.45)*0.55,jx,GND-22) : ropePoints(a2);
-  } else if(tangled && tangleWho===2){
-    p2=deformedRope(a2,0.5,tangleProg,jx,GND);
-    p1= tangleProg>0.45? deformedRope(a1,0.5,(tangleProg-0.45)*0.55,jx,GND-22) : ropePoints(a1);
-  } else {
-    p1=ropePoints(a1); p2=ropePoints(a2);
-  }
-
-  // layer order: back ropes → turners → jumper → front ropes
-  if(z1<=0) drawRope(p1,'#a83028','#e74c3c');
-  if(z2<=0) drawRope(p2,'#1a6898','#3498db');
-
-  drawTurner(TL_X,'L',a1,a2);
-  drawTurner(TR_X,'R',a1,a2);
-  drawJumper(jx,jy,sq,st,lean,armA,tangleProg);
-
-  if(z1>0) drawRope(p1,'#a83028','#e74c3c');
-  if(z2>0) drawRope(p2,'#1a6898','#3498db');
-
-  drawParts();
-  drawJudgment();
-  drawHUD();
-
-  // tangle overlay
-  if(tangled && tangleProg>0.5){
-    C.fillStyle='rgba(0,0,0,'+(tangleProg-0.5)*0.28+')';
-    C.fillRect(0,0,W,H);
-    if(tangleProg>0.78){
-      C.save(); C.textAlign='center';
-      C.globalAlpha=(tangleProg-0.78)*4.5;
-      C.fillStyle='#E74C3C'; C.font='bold 50px "Segoe UI"';
-      C.shadowColor='#E74C3C'; C.shadowBlur=20;
-      C.fillText('TANGLED!',CX,295); C.shadowBlur=0;
-      C.fillStyle='rgba(255,255,255,.55)'; C.font='17px "Segoe UI"';
-      var msg = tangleType==='step'?'Stepped on the rope!'
-              : tangleType==='clip'?'Toe clipped the rope!'
-              : 'Rope caught the shin!';
-      C.fillText(msg,CX,335);
-      C.restore();
-    }
-  }
-}
-
-/* ═══════════════════════════════════
-   MAIN LOOP
-   ═══════════════════════════════════ */
-var last = 0;
-function loop(ts){
-  var dt = Math.min((ts-last)/1000, 0.05);
-  last = ts;
+function gameLoop(time){
+  requestAnimationFrame(gameLoop);
+  const dt = Math.min((time - lastTime) / 1000, 0.1);
+  lastTime = time;
 
   update(dt);
-  tickParts();
-  draw();
 
-  for(var k in jp) delete jp[k];   // clear per‑frame input
-  requestAnimationFrame(loop);
+  // Clear just-pressed
+  for(const k in jp) jp[k] = false;
+
+  renderer.render(scene, camera);
 }
-requestAnimationFrame(loop);
+
+// ═══════════════════════════════════
+//  INIT
+// ═══════════════════════════════════
+buildEnvironment();
+buildSpectators();
+initGameObjects();
+showMenu();
+bindDiffArrows();
+
+requestAnimationFrame(gameLoop);
 
 </script>
 </body>
