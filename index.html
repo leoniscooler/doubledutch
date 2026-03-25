@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Double Dutch Simulator</title>
+<title>Double Dutch — Rhythm &amp; Rope Simulator</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#0a0a1a;display:flex;justify-content:center;align-items:center;height:100vh;overflow:hidden;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;user-select:none}
@@ -647,22 +647,6 @@ function drawHUD(){
   C.fillStyle='rgba(0,0,0,.32)'; rr(CX-52,10,104,22,6); C.fill();
   C.fillStyle='#999'; C.font='11px "Segoe UI"'; C.textAlign='center';
   C.fillText(diff.label.toUpperCase()+' \u00B7 '+diff.bpm+' BPM',CX,26);
-
-  // beat bar
-  var bW=280, bX=CX-bW/2, bY=H-46;
-  C.fillStyle='rgba(0,0,0,.38)'; rr(bX-10,bY-14,bW+20,28,8); C.fill();
-  var ds=bW/8;
-  for(var i=0;i<=8;i++){
-    var dx=bX+i*ds, big=(i%4===0);
-    C.fillStyle=big?'rgba(255,215,0,.55)':'rgba(255,255,255,.18)';
-    C.beginPath(); C.arc(dx,bY,big?5:2.5,0,TAU); C.fill();
-  }
-  if(state==='jumping'||state==='entering'){
-    var ph=((rAngle%PI)/PI);
-    C.shadowColor='#FFD700'; C.shadowBlur=beatFlash>0?14:4;
-    C.fillStyle='#fff'; C.beginPath(); C.arc(bX+ph*bW,bY,5.5,0,TAU); C.fill();
-    C.shadowBlur=0;
-  }
 
   if(state==='jumping'){
     var m2=floor(gTime/60), s2=floor(gTime%60);
