@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Double Dutch 3D</title>
+<title>Black Joy</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#000;overflow:hidden;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;user-select:none}
@@ -29,7 +29,6 @@ canvas{display:block;width:100vw;height:100vh}
 #centerMsg .diff-arrow{font-size:32px;color:#FFD700;cursor:pointer;pointer-events:auto;opacity:0.7;transition:opacity .15s, transform .15s;user-select:none}
 #centerMsg .diff-arrow:hover{opacity:1;transform:scale(1.25)}
 #centerMsg .diff-label{font-size:17px;color:#FFD700;min-width:160px;text-align:center}
-#timer{position:absolute;bottom:14px;right:18px;font-size:13px;color:rgba(255,255,255,.35)}
 #prompt{position:absolute;bottom:50px;left:50%;transform:translateX(-50%);font-size:15px;color:rgba(255,255,255,.5);display:none}
 #composure{top:76px;right:12px;width:170px}
 #composure .label{font-size:11px;color:#aaa;margin-bottom:3px}
@@ -39,6 +38,9 @@ canvas{display:block;width:100vw;height:100vh}
 #accuracy .label{font-size:11px;color:#aaa;margin-bottom:3px}
 #accuracy .bar{height:14px;background:rgba(255,255,255,.12);border-radius:7px;overflow:hidden}
 #accuracy .fill{height:100%;border-radius:7px;background:linear-gradient(90deg,#9b59b6,#e74c3c);transition:width .2s}
+#nowPlaying{position:fixed;bottom:18px;left:18px;font-size:13px;color:#FFD700;opacity:0;transition:opacity 1.5s;pointer-events:none;z-index:20;text-shadow:0 0 8px rgba(255,215,0,.4);font-style:italic}
+#menuBtn{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:25;background:rgba(0,0,0,.55);border:1px solid rgba(255,215,0,.35);color:#FFD700;font-size:12px;padding:6px 18px;border-radius:8px;cursor:pointer;backdrop-filter:blur(4px);transition:background .15s,transform .1s;display:none;font-family:inherit;letter-spacing:1px}
+#menuBtn:hover{background:rgba(255,215,0,.2);transform:translateX(-50%) scale(1.05)}
 </style>
 </head>
 <body>
@@ -46,38 +48,21 @@ canvas{display:block;width:100vw;height:100vh}
   <div id="scorePanel" class="hud-panel" style="display:none">
     <div class="big" id="scoreVal">0</div>
     <div class="combo" id="comboVal"></div>
-    <div style="font-size:11px;color:#aaa;margin-top:3px">JUMPS: <span id="jumpCount">0</span></div>
-  </div>
-  <div id="flowPanel" class="hud-panel" style="display:none">
-    <div class="label">FLOW</div>
-    <div class="bar"><div class="fill" id="flowFill" style="width:50%;background:linear-gradient(90deg,#2ecc71,#f1c40f,#e74c3c)"></div></div>
-  </div>
-  <div id="composure" class="hud-panel" style="display:none">
-    <div class="label">COMPOSURE</div>
-    <div class="bar"><div class="fill" id="compFill" style="width:100%"></div></div>
-  </div>
-  <div id="accuracy" class="hud-panel" style="display:none">
-    <div class="label">RHYTHM ACCURACY</div>
-    <div class="bar"><div class="fill" id="accFill" style="width:100%"></div></div>
   </div>
   <div id="diffLabel" class="hud-panel" style="display:none"></div>
   <div id="judgment"></div>
-  <div id="timer" style="display:none"></div>
   <div id="prompt"></div>
   <div id="centerMsg">
-    <h1>DOUBLE DUTCH 3D</h1>
-    <div class="sub">Third-Person Rhythm &amp; Rope Simulator</div>
-    <div class="diff-row">
-      <span class="diff-arrow" id="diffLeft">◀</span>
-      <span class="diff-label" id="diffDisplay">EASY · 75 BPM</span>
-      <span class="diff-arrow" id="diffRight">▶</span>
-    </div>
+    <h1>BLACK JOY</h1>
+    <div class="sub">Double Dutch 3D — Rhythm &amp; Rope Simulator</div>
     <div class="keys">
       WASD / Arrows — Move &nbsp;|&nbsp; SPACE — Jump &nbsp;|&nbsp; Mouse — Look<br>
       ENTER — Start
     </div>
   </div>
 </div>
+<div id="nowPlaying"></div>
+<button id="menuBtn">ESC — MENU</button>
 
 <script type="importmap">
 {
@@ -107,11 +92,13 @@ const rand = (a,b) => a+Math.random()*(b-a);
 const ROPE_SEG_COUNT = 32;    // segments per rope
 const ROPE_LENGTH    = 7.0;   // meters
 const ROPE_THICKNESS = 0.04;
+const ROPE_HIT_RADIUS= 0.06;  // collision detection radius for rope
 const ROPE_RADIUS    = 2.0;   // how high the rope arcs (swing radius in Y/Z)
 const TURNER_DIST    = 3.5;   // distance from center to each turner
 const JUMP_FORCE     = 4.8;
 const GRAVITY        = -14.0;
 const PLAYER_HEIGHT  = 1.7;
+const PLAYER_BODY_RADIUS = 0.1; // player body collision cylinder radius
 const PLAYER_SPEED   = 4.0;
 
 const DIFFS = [
@@ -124,7 +111,7 @@ const DIFFS = [
 
 // ── GAME STATE ──
 let state = 'menu'; // menu | freeroam | jumping | tangled | score
-let dIdx = 1, diff = DIFFS[dIdx];
+let dIdx = 1, diff = DIFFS[1]; // locked to Easy
 let score=0, combo=0, maxCombo=0, flow=50, composure=100, accuracy=100;
 let totalJ=0, perfC=0, goodC=0;
 let jumpedBeat=false, beatFlash=0, graceBeats=0;
@@ -138,15 +125,10 @@ let insideRopes=false;
 // ── DOM REFS ──
 const $score = document.getElementById('scoreVal');
 const $combo = document.getElementById('comboVal');
-const $jumps = document.getElementById('jumpCount');
-const $flowFill = document.getElementById('flowFill');
-const $compFill = document.getElementById('compFill');
-const $accFill  = document.getElementById('accFill');
 const $diffLabel = document.getElementById('diffLabel');
 const $diffDisplay = document.getElementById('diffDisplay');
 const $judgment = document.getElementById('judgment');
 const $centerMsg = document.getElementById('centerMsg');
-const $timer = document.getElementById('timer');
 const $prompt = document.getElementById('prompt');
 
 // ── INPUT ──
@@ -182,6 +164,16 @@ function initAudio(){ if(!actx) actx=new (window.AudioContext||window.webkitAudi
 
 function sfx(type, vol=1){
   if(!actx) return;
+  // Proximity-based volume — same as music: hearR=0.9, inverse square law from rope center (origin)
+  const rdx = playerPos.x, rdz = playerPos.z;
+  const ropeDist = Math.sqrt(rdx*rdx + rdz*rdz);
+  const ropeHearR = 0.9;
+  let proxVol;
+  if(ropeDist <= ropeHearR){ proxVol = 1.0; }
+  else { proxVol = (ropeHearR * ropeHearR) / (ropeDist * ropeDist); }
+  proxVol = Math.min(1.0, Math.max(0.0, proxVol));
+  vol *= proxVol;
+  if(vol < 0.001) return; // too quiet to bother
   const t=actx.currentTime;
   const g=actx.createGain();
   g.gain.value=vol*0.3;
@@ -198,7 +190,7 @@ function sfx(type, vol=1){
     o.connect(g2); g2.connect(actx.destination); o.start(t); o.stop(t+.08);
   } else if(type==='jump'){
     const o=actx.createOscillator(); o.type='triangle'; o.frequency.value=200;
-    g.gain.setValueAtTime(vol*.08,t); g.gain.exponentialRampToValueAtTime(.001,t+.06);
+    g.gain.setValueAtTime(vol*.12,t); g.gain.exponentialRampToValueAtTime(.001,t+.06);
     o.connect(g); o.start(t); o.stop(t+.06);
   } else if(type==='land'){
     const sr=actx.sampleRate, n=(sr*.05)|0, buf=actx.createBuffer(1,n,sr), d=buf.getChannelData(0);
@@ -250,7 +242,85 @@ let ambientInterval=null;
 function startAmbience(){
   if(ambientInterval) return;
   ambientInterval = setInterval(() => { if(actx) sfx('ambient',.3); }, 3000);
+  startJazz();
 }
+
+// ═══════════════════════════════════
+//  LOUIS ARMSTRONG — REAL RECORDINGS
+// ═══════════════════════════════════
+let jazzPlaying = false;
+let jazzAudio = null;
+let jazzTrackIdx = 0;
+let currentJazzBPM = 80;
+
+// 5 classic Louis Armstrong tracks from the Internet Archive
+const JAZZ_TRACKS = [
+  { title: 'What a Wonderful World', bpm: 70,
+    url: 'https://archive.org/download/WhatAWonderfulWorld_59/Oldies50s-LouisArmstrong-whatAWonderfulWorld.mp3' },
+  { title: 'When the Saints Go Marching In', bpm: 110,
+    url: 'https://archive.org/download/78_2442-When-the-saints-go-marching-in/2442-When-the-saints-go-marching-in.mp3' },
+  { title: 'Dream a Little Dream of Me', bpm: 75,
+    url: 'https://archive.org/download/78_2283-Dream-a-little-dream-of-me/2283-Dream-a-little-dream-of-me.mp3' },
+  { title: 'La Vie en Rose', bpm: 86,
+    url: 'https://archive.org/download/78_12296-La-vie-en-rose-Take-me-to-your-herart-again/12296-La-vie-en-rose-Take-me-to-your-herart-again.mp3' },
+  { title: 'St. James Infirmary', bpm: 78,
+    url: 'https://archive.org/download/78_9595-St-James-infirmary/9595-St-James-infirmary.mp3' },
+];
+
+function startJazz(){
+  if(jazzPlaying) return;
+  jazzPlaying = true;
+  playJazzTrack(jazzTrackIdx);
+}
+
+function playJazzTrack(idx){
+  jazzTrackIdx = idx % JAZZ_TRACKS.length;
+  const track = JAZZ_TRACKS[jazzTrackIdx];
+  currentJazzBPM = track.bpm || 80;
+
+  if(jazzAudio){
+    jazzAudio.pause();
+    jazzAudio.removeAttribute('src');
+    jazzAudio.load();
+  }
+
+  jazzAudio = new Audio(track.url);
+  jazzAudio.crossOrigin = 'anonymous';
+  jazzAudio.volume = 0.05;
+  jazzAudio.play().catch(() => {
+    const retry = () => {
+      jazzAudio.play().catch(()=>{});
+      document.removeEventListener('click', retry);
+      document.removeEventListener('keydown', retry);
+    };
+    document.addEventListener('click', retry, {once:true});
+    document.addEventListener('keydown', retry, {once:true});
+  });
+
+  // Show now-playing briefly
+  const $np = document.getElementById('nowPlaying');
+  if($np){
+    $np.textContent = '♫ ' + track.title + ' — Louis Armstrong';
+    $np.style.opacity = '1';
+    setTimeout(() => { $np.style.opacity = '0'; }, 5000);
+  }
+
+  // When song ends, play next
+  jazzAudio.onended = () => {
+    if(jazzPlaying) playJazzTrack(jazzTrackIdx + 1);
+  };
+}
+
+// ── Pause all audio when tab is hidden ──
+document.addEventListener('visibilitychange', () => {
+  if(document.hidden){
+    if(actx && actx.state === 'running') actx.suspend();
+    if(jazzAudio && !jazzAudio.paused) jazzAudio.pause();
+  } else {
+    if(actx && actx.state === 'suspended') actx.resume();
+    if(jazzAudio && jazzPlaying) jazzAudio.play().catch(()=>{});
+  }
+});
 
 // ═══════════════════════════════════
 //  THREE.JS SETUP
@@ -347,9 +417,9 @@ const MAT = {
 //  ENVIRONMENT
 // ═══════════════════════════════════
 function buildEnvironment(){
-  // Ground (blacktop court)
+  // Ground (blacktop court + surrounding area)
   const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(60, 60),
+    new THREE.PlaneGeometry(120, 120),
     MAT.blacktop
   );
   ground.rotation.x = -PI/2;
@@ -404,7 +474,7 @@ function buildEnvironment(){
   scene.add(marker);
 
   // Sidewalk border
-  const swGeo = new THREE.BoxGeometry(70, 0.15, 4);
+  const swGeo = new THREE.BoxGeometry(40, 0.15, 4);
   [-15,15].forEach(z => {
     const sw = new THREE.Mesh(swGeo, MAT.sidewalk);
     sw.position.set(0, 0.07, z);
@@ -413,8 +483,8 @@ function buildEnvironment(){
   });
 
   // Fence (chain-link style)
-  buildFence(-14, -25, 25);
-  buildFence(14, -25, 25);
+  buildFence(-14, -18, 18);
+  buildFence(14, -18, 18);
 
   // Buildings (background)
   buildBuildings();
@@ -425,9 +495,9 @@ function buildEnvironment(){
   buildCar(8, 0, 12, PI, MAT.car3);
   buildCar(12, 0, 12, PI+0.05, MAT.car1);
 
-  // Trees
+  // Trees (keep inside the loop, away from march streets)
   for(let i=0; i<8; i++){
-    const tx = rand(-25,25), tz = rand(16,22) * (i%2===0?1:-1);
+    const tx = rand(-16,16), tz = rand(16,19) * (i%2===0?1:-1);
     buildTree(tx, tz);
   }
 
@@ -467,41 +537,7 @@ function buildFence(z, xStart, xEnd){
 }
 
 function buildBuildings(){
-  const builds = [
-    {x:-20, z:-22, w:6, h:12, d:5},
-    {x:-12, z:-24, w:5, h:8, d:4},
-    {x:-4, z:-26, w:7, h:15, d:6},
-    {x:6, z:-23, w:8, h:10, d:5},
-    {x:16, z:-25, w:6, h:18, d:5},
-    {x:-18, z:22, w:7, h:9, d:5},
-    {x:-8, z:25, w:10, h:14, d:6},
-    {x:5, z:24, w:6, h:11, d:5},
-    {x:14, z:23, w:8, h:16, d:5},
-  ];
-  builds.forEach(b => {
-    const geo = new THREE.BoxGeometry(b.w, b.h, b.d);
-    const bldg = new THREE.Mesh(geo, MAT.building);
-    bldg.position.set(b.x, b.h/2, b.z);
-    bldg.castShadow = true;
-    bldg.receiveShadow = true;
-    scene.add(bldg);
-
-    // Windows
-    const winGeo = new THREE.PlaneGeometry(0.5, 0.7);
-    for(let wy=1.5; wy<b.h-1; wy+=2){
-      for(let wx=-b.w/2+1; wx<b.w/2-0.5; wx+=1.5){
-        if(Math.random()>0.3){
-          const win = new THREE.Mesh(winGeo, MAT.buildWin);
-          win.position.set(b.x+wx, wy, b.z + b.d/2+0.01);
-          scene.add(win);
-          const win2 = win.clone();
-          win2.position.z = b.z - b.d/2-0.01;
-          win2.rotation.y = PI;
-          scene.add(win2);
-        }
-      }
-    }
-  });
+  // Removed — the march loop street now provides all surrounding buildings
 }
 
 function buildCar(x, y, z, rot, bodyMat){
@@ -866,17 +902,16 @@ class PhysicsRope {
     this.wasOnGround = onGround;
   }
 
-  // For tangle: distort the shape toward the center/ground
+  // For tangle: droop rope to the ground (gravity fall, not distortion)
   applyTangle(tangleProg){
-    const centerIdx = Math.floor(this.segCount * 0.5);
     for(let i=1; i<this.segCount; i++){
-      const d = Math.abs(i - centerIdx) / this.segCount;
-      const inf = Math.max(0, 1-d*3) * tangleProg;
+      const t = i / this.segCount;
+      const env = sin(PI * t); // most droop in the middle
       const p = this.points[i];
-      p.y = lerp(p.y, 0.05, inf * 0.15);
-      p.z = lerp(p.z, 0, inf * 0.1);
-      // Add some random wobble
-      p.x += sin(i*5 + tangleProg*10) * 0.02 * tangleProg;
+      // Sag toward ground with catenary-like shape
+      const targetY = 0.02 + (1 - env) * 0.3; // endpoints stay higher, middle hits ground
+      p.y = lerp(p.y, targetY, tangleProg);
+      p.z = lerp(p.z, 0, tangleProg * 0.5); // flatten Z
     }
   }
 
@@ -904,6 +939,73 @@ class PhysicsRope {
       }
     }
     return minY;
+  }
+
+  // Physical collision: test each segment against a vertical cylinder
+  // (the player body). Returns {hit:bool, segIdx, contactPt, depth} or null.
+  testPlayerCollision(px, py, pz, bodyRadius, bodyHeight){
+    let deepest = null;
+    for(let i = 0; i < this.segCount; i++){
+      const a = this.points[i];
+      const b = this.points[i+1];
+      // Check if this segment is in the vertical range of the player body
+      const segMinY = Math.min(a.y, b.y);
+      const segMaxY = Math.max(a.y, b.y);
+      const bodyTop = py + bodyHeight;
+      if(segMaxY < py - 0.05 || segMinY > bodyTop + 0.05) continue;
+
+      // Project player center onto segment line (XZ plane)
+      const axz = a.x, azz = a.z, bxz = b.x, bzz = b.z;
+      const abx = bxz - axz, abz = bzz - azz;
+      const apx = px - axz, apz = pz - azz;
+      const abLen2 = abx*abx + abz*abz;
+      if(abLen2 < 0.0001) continue;
+      let t = (apx*abx + apz*abz) / abLen2;
+      t = Math.max(0, Math.min(1, t));
+
+      const closestX = axz + t * abx;
+      const closestZ = azz + t * abz;
+      const closestY = a.y + t * (b.y - a.y);
+
+      // Check Y: rope point must be within player body height
+      if(closestY < py - 0.05 || closestY > bodyTop + 0.05) continue;
+
+      // XZ distance
+      const dx = px - closestX;
+      const dz = pz - closestZ;
+      const dist = Math.sqrt(dx*dx + dz*dz);
+      const hitRadius = bodyRadius + ROPE_HIT_RADIUS;
+
+      if(dist < hitRadius){
+        const depth = hitRadius - dist;
+        if(!deepest || depth > deepest.depth){
+          deepest = {
+            hit: true,
+            segIdx: i,
+            t: t,
+            contactPt: new Vector3(closestX, closestY, closestZ),
+            depth: depth
+          };
+        }
+      }
+    }
+    return deepest;
+  }
+
+  // Bend rope at contact — push the contacted segment and neighbors outward
+  applyContactBend(segIdx, t, pushX, pushZ, strength){
+    const influence = 5; // how many segments to affect on each side
+    const centerI = segIdx + t;
+    for(let i = 0; i <= this.segCount; i++){
+      const d = Math.abs(i - centerI);
+      if(d > influence) continue;
+      const f = (1 - d / influence);
+      const w = f * f * strength; // quadratic falloff
+      this.points[i].x += pushX * w;
+      this.points[i].z += pushZ * w;
+      // Also push Y up slightly (rope catches on body)
+      this.points[i].y += 0.03 * w;
+    }
   }
 
   dispose(){
@@ -959,6 +1061,60 @@ function tickParticles(dt){
 const DUST_CFG  = {colors:[0xc8b89a, 0xa89070, 0xd4c4a8], vyMin:0.5, vyMax:2, grav:-3, decayMin:0.015, decayMax:0.03};
 const SPARK_CFG = {colors:[0xFFD700, 0xFFA500, 0xFF6347, 0xffffff], vyMin:2, vyMax:5, vxMin:-2, vxMax:2, vzMin:-2, vzMax:2, grav:-8, decayMin:0.03, decayMax:0.06};
 
+// Music note symbols as flat sprite textures
+const NOTE_SYMBOLS = ['♪', '♫', '♩', '♬'];
+const noteCanvasCache = {};
+function getNoteTexture(sym){
+  if(noteCanvasCache[sym]) return noteCanvasCache[sym];
+  const c = document.createElement('canvas');
+  c.width = 64; c.height = 64;
+  const ctx = c.getContext('2d');
+  ctx.font = 'bold 48px serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#FFD700';
+  ctx.fillText(sym, 32, 32);
+  const tex = new THREE.CanvasTexture(c);
+  noteCanvasCache[sym] = tex;
+  return tex;
+}
+const musicNotes = [];
+function emitMusicNote(worldPos){
+  const sym = NOTE_SYMBOLS[floor(Math.random()*NOTE_SYMBOLS.length)];
+  const spriteMat = new THREE.SpriteMaterial({map:getNoteTexture(sym), transparent:true, opacity:1, color:Math.random()>0.5?0xFFD700:0xFFA500});
+  const sprite = new THREE.Sprite(spriteMat);
+  sprite.position.copy(worldPos);
+  sprite.scale.setScalar(0.18);
+  scene.add(sprite);
+  musicNotes.push({
+    sprite,
+    vx: rand(-0.15, 0.15),
+    vy: rand(0.4, 0.8),
+    vz: rand(-0.15, 0.15),
+    life: 1,
+    decay: rand(0.3, 0.6)
+  });
+}
+function tickMusicNotes(dt){
+  for(let i=musicNotes.length-1; i>=0; i--){
+    const n = musicNotes[i];
+    n.sprite.position.x += n.vx * dt;
+    n.sprite.position.y += n.vy * dt;
+    n.sprite.position.z += n.vz * dt;
+    n.life -= n.decay * dt;
+    n.sprite.material.opacity = Math.max(0, n.life);
+    n.sprite.scale.setScalar(0.18 + (1 - n.life) * 0.1);
+    if(n.life <= 0){
+      scene.remove(n.sprite);
+      n.sprite.material.dispose();
+      musicNotes.splice(i, 1);
+    }
+  }
+}
+
+const jazzPerformers = [];
+const obstacles = [];   // {minX, maxX, minZ, maxZ, topY, type}
+const PLAYER_RADIUS = 0.25;
+
 // ═══════════════════════════════════
 //  SPECTATORS (simple standing figures)
 // ═══════════════════════════════════
@@ -1008,10 +1164,1146 @@ function buildSpectators(){
       g.add(shoe);
     });
 
-    g.position.set(s.x, 0, s.z);
+    g.position.set(s.x, -0.30, s.z);
     g.rotation.y = s.rot;
     scene.add(g);
   });
+}
+
+// ═══════════════════════════════════
+//  JAZZ STREET PERFORMERS
+// ═══════════════════════════════════
+function buildJazzPerformers(){
+  // Placed next to parked cars on the -Z sidewalk
+  const musicians = [
+    {x:-2,  z:-9.5,  inst:'trumpet', skin:0x6B3A1F, shirt:0x8B0000, hat:true},
+    {x:-3.5,z:-9,    inst:'sax',     skin:0x8B5A2B, shirt:0xB8860B, hat:true},
+    {x:-1,  z:-10.5, inst:'bass',    skin:0xA0704C, shirt:0x2F4F4F, hat:false},
+    {x:0.5, z:-9.2,  inst:'drums',   skin:0x7A5535, shirt:0x191970, hat:true},
+  ];
+  // Compute rotation so each musician faces the jump ropes at origin
+  musicians.forEach(m => { m.rot = Math.atan2(-m.x, -m.z); });
+
+  musicians.forEach((m) => {
+    const skin = mat(m.skin);
+    const shirt = mat(m.shirt);
+    const pants = mat(0x1a1a2e);
+    const g = new THREE.Group();
+
+    // Body (torso)
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.18,0.2,0.6,8), shirt);
+    body.position.y = 1.1; body.castShadow = true; g.add(body);
+    // Legs
+    [-0.09,0.09].forEach(lx => {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.07,0.06,0.55,6), pants);
+      leg.position.set(lx,0.5,0); leg.castShadow = true; g.add(leg);
+    });
+    // Arms
+    const armGeo = new THREE.CylinderGeometry(0.05,0.045,0.4,6);
+    const lArm = new THREE.Mesh(armGeo, skin);
+    lArm.position.set(-0.25,1.1,0.1); lArm.rotation.x=-0.5; g.add(lArm);
+    const rArm = new THREE.Mesh(armGeo, skin);
+    rArm.position.set(0.25,1.1,0.1); rArm.rotation.x=-0.5; g.add(rArm);
+    // Head
+    const headM = new THREE.Mesh(new THREE.SphereGeometry(0.15,10,8), skin);
+    headM.position.y = 1.6; headM.castShadow = true; g.add(headM);
+    // Eyes
+    [-0.05,0.05].forEach(ex => {
+      const w = new THREE.Mesh(new THREE.SphereGeometry(0.025,6,5), mat(0xffffff));
+      w.position.set(ex,1.62,0.13); g.add(w);
+      const p = new THREE.Mesh(new THREE.SphereGeometry(0.012,5,5), mat(0x3E2B1A));
+      p.position.set(ex,1.62,0.15); g.add(p);
+    });
+    // Mouth
+    const mouthM = new THREE.Mesh(new THREE.BoxGeometry(0.05,0.012,0.01), mat(0xB87060));
+    mouthM.position.set(0,1.52,0.15); g.add(mouthM);
+    // Hair
+    const hairM = new THREE.Mesh(new THREE.SphereGeometry(0.16,10,6,0,TAU,0,PI*0.5), mat(0x1a1008));
+    hairM.position.y = 1.63; g.add(hairM);
+    // Hat (fedora/porkpie for jazz)
+    if(m.hat){
+      const hatMat = mat(0x2c2c2c);
+      const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.22,0.22,0.02,12), hatMat);
+      brim.position.y = 1.77; g.add(brim);
+      const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.14,0.12,12), hatMat);
+      crown.position.y = 1.84; g.add(crown);
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(0.141,0.141,0.025,12), mat(0x8B0000));
+      band.position.y = 1.79; g.add(band);
+    }
+    // Shoes (grounded)
+    [-0.09,0.09].forEach(sx => {
+      const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.12,0.06,0.2), MAT.shoe);
+      shoe.position.set(sx,0.03,0.02); g.add(shoe);
+    });
+
+    // Instruments
+    const brass = mat(0xDAA520,{rough:0.3,metal:0.7});
+    const wood = mat(0x654321,{rough:0.7});
+
+    if(m.inst==='sax'){
+      const saxB = new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.06,0.6,8), brass);
+      saxB.position.set(0.05,1.15,0.25); saxB.rotation.x=-0.4; g.add(saxB);
+      const bell = new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.04,0.15,8), brass);
+      bell.position.set(0.05,0.9,0.35); bell.rotation.x=0.5; g.add(bell);
+      const mp = new THREE.Mesh(new THREE.CylinderGeometry(0.015,0.02,0.1,6), mat(0x111111));
+      mp.position.set(0.05,1.45,0.18); mp.rotation.x=-0.8; g.add(mp);
+      lArm.rotation.set(-0.7,0,0.3); rArm.rotation.set(-0.6,0,-0.2);
+    }
+    if(m.inst==='trumpet'){
+      const tB = new THREE.Mesh(new THREE.CylinderGeometry(0.025,0.025,0.45,8), brass);
+      tB.position.set(0,1.35,0.3); tB.rotation.x=PI/2; g.add(tB);
+      const tBell = new THREE.Mesh(new THREE.CylinderGeometry(0.07,0.025,0.12,8), brass);
+      tBell.position.set(0,1.35,0.55); tBell.rotation.x=PI/2; g.add(tBell);
+      for(let v=0;v<3;v++){
+        const valve = new THREE.Mesh(new THREE.CylinderGeometry(0.012,0.012,0.06,6), brass);
+        valve.position.set(-0.03+v*0.03,1.38,0.25+v*0.04); g.add(valve);
+      }
+      lArm.rotation.set(-1.2,0,0.4); rArm.rotation.set(-1.2,0,-0.3);
+    }
+    if(m.inst==='bass'){
+      const bassB = new THREE.Mesh(new THREE.CylinderGeometry(0.18,0.25,1.2,8), wood);
+      bassB.position.set(0.3,0.8,0.15); g.add(bassB);
+      const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.025,0.8,6), wood);
+      neck.position.set(0.3,1.75,0.1); neck.rotation.z=0.05; g.add(neck);
+      const strMat = mat(0xcccccc,{metal:0.8});
+      for(let s=-0.04;s<=0.04;s+=0.027){
+        const str = new THREE.Mesh(new THREE.CylinderGeometry(0.003,0.003,1.5,4), strMat);
+        str.position.set(0.3+s,1.15,0.28); g.add(str);
+      }
+      lArm.position.set(-0.2,1.1,0.1); lArm.rotation.set(-0.3,0,0.6);
+      rArm.position.set(0.2,1.1,0.1); rArm.rotation.set(-0.8,0,-0.4);
+    }
+    if(m.inst==='drums'){
+      // Stool
+      const stool = new THREE.Mesh(new THREE.CylinderGeometry(0.15,0.15,0.04,10), mat(0x333333));
+      stool.position.set(0,0.45,-0.1); g.add(stool);
+      const stoolLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.02,0.45,6), mat(0x888888,{metal:0.5}));
+      stoolLeg.position.set(0,0.23,-0.1); g.add(stoolLeg);
+      // Snare drum
+      const snare = new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.2,0.12,12), mat(0xcc4444));
+      snare.position.set(0,0.8,0.4); g.add(snare);
+      const snareSkin = new THREE.Mesh(new THREE.CircleGeometry(0.2,12), mat(0xf5deb3));
+      snareSkin.position.set(0,0.86,0.4); snareSkin.rotation.x=-PI/2; g.add(snareSkin);
+      // Hi-hat cymbal
+      const hh = new THREE.Mesh(new THREE.CylinderGeometry(0.15,0.15,0.01,12), brass);
+      hh.position.set(-0.3,1.0,0.35); g.add(hh);
+      const cStand = new THREE.Mesh(new THREE.CylinderGeometry(0.015,0.015,0.7,6), mat(0x888888,{metal:0.5}));
+      cStand.position.set(-0.3,0.65,0.35); g.add(cStand);
+      // Drumsticks
+      const stickMat = mat(0xdeb887);
+      const s1 = new THREE.Mesh(new THREE.CylinderGeometry(0.01,0.008,0.35,4), stickMat);
+      s1.position.set(-0.2,1.0,0.35); s1.rotation.set(-0.8,0,0.3); g.add(s1);
+      const s2 = new THREE.Mesh(new THREE.CylinderGeometry(0.01,0.008,0.35,4), stickMat);
+      s2.position.set(0.2,1.0,0.35); s2.rotation.set(-0.8,0,-0.3); g.add(s2);
+      lArm.rotation.set(-0.8,0,0.3); rArm.rotation.set(-0.8,0,-0.3);
+    }
+
+    // Instrument emit offset in local space (where notes come from)
+    let noteOff = {x:0, y:1.4, z:0.3};
+    if(m.inst==='trumpet') noteOff = {x:0, y:1.35, z:0.55};
+    if(m.inst==='sax')     noteOff = {x:0.05, y:0.9, z:0.35};
+    if(m.inst==='bass')    noteOff = {x:0.3, y:1.75, z:0.1};
+    if(m.inst==='drums')   noteOff = {x:0, y:1.1, z:0.35};
+
+    g.position.set(m.x, 0, m.z);
+    g.rotation.y = m.rot;
+    scene.add(g);
+    jazzPerformers.push({group:g, inst:m.inst, time:rand(0,TAU), noteOff, noteTimer:rand(0,1.5)});
+  });
+
+  // Open instrument case on ground (for tips!)
+  const caseG = new THREE.Group();
+  const caseBox = new THREE.Mesh(new THREE.BoxGeometry(0.6,0.08,0.3), mat(0x2c1810));
+  caseBox.position.y = 0.04; caseG.add(caseBox);
+  const velvet = new THREE.Mesh(new THREE.BoxGeometry(0.5,0.01,0.22), mat(0x8B0000));
+  velvet.position.y = 0.085; caseG.add(velvet);
+  for(let c=0;c<5;c++){
+    const coin = new THREE.Mesh(new THREE.CylinderGeometry(0.025,0.025,0.005,8), mat(0xDAA520,{metal:0.8}));
+    coin.position.set(rand(-0.15,0.15), 0.09, rand(-0.06,0.06));
+    coin.rotation.x = PI/2 + rand(-0.3,0.3); caseG.add(coin);
+  }
+  caseG.position.set(-1.5, 0, -8.5);
+  caseG.rotation.y = 0.5;
+  scene.add(caseG);
+}
+
+// ═══════════════════════════════════
+//  FREE BREAKFAST FOR CHILDREN PROGRAM
+// ═══════════════════════════════════
+const BFP = {
+  cx: 10, cz: -3,          // station center
+  tableRot: -PI/4,         // table faces toward center of map
+  children: [],
+  volunteers: [],
+  foodItems: [],
+  foodCount: 18,            // total food items on table
+  serveTimer: 0,
+  SERVE_INTERVAL: 3.5,      // seconds between each child served
+  CHILD_COUNT: 6,           // children in queue system
+  queueStart: {x:10, z:3}, // where children line up (approach from +z)
+  exitTarget: {x:15, z:-3},// walk into the community building
+  spawnPoint: {x:14, z:6}, // where new children appear (will be overridden to building door)
+};
+
+function buildBreakfastStation(){
+  const g = new THREE.Group();
+  const tableMat = mat(0x8B7355, {rough:0.85});
+  const metalMat = mat(0x888888, {rough:0.6, metal:0.4});
+  const whiteMat = mat(0xF5F0E8, {rough:0.9});
+  const clothMat = mat(0xCC3333, {rough:0.8}); // red tablecloth
+  const posterMat = mat(0xF0E8D0, {rough:0.95});
+  const cx = BFP.cx, cz = BFP.cz;
+
+  // ── Two folding tables side by side ──
+  const tableW = 3.2, tableD = 0.9, tableH = 0.78;
+  for(let ti = 0; ti < 2; ti++){
+    const tx = cx + (ti - 0.5) * (tableW * 0.52);
+    const tz = cz;
+    // Table top
+    const top = new THREE.Mesh(new THREE.BoxGeometry(tableW * 0.5, 0.04, tableD), tableMat);
+    top.position.set(tx, tableH, tz); top.castShadow = true; g.add(top);
+    // Table cloth (draped over top, slightly larger)
+    const cloth = new THREE.Mesh(new THREE.BoxGeometry(tableW * 0.52, 0.02, tableD + 0.1), clothMat);
+    cloth.position.set(tx, tableH + 0.02, tz); g.add(cloth);
+    // Folding legs (X-frame)
+    for(let lx = -0.6; lx <= 0.6; lx += 1.2){
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, tableH, 4), metalMat);
+      leg.position.set(tx + lx, tableH/2, tz - 0.2);
+      leg.rotation.z = 0.06 * Math.sign(lx); g.add(leg);
+      const leg2 = leg.clone();
+      leg2.position.z = tz + 0.2; g.add(leg2);
+    }
+  }
+
+  // ── Food items on tables ──
+  BFP.foodItems = [];
+  const plateGeo = new THREE.CylinderGeometry(0.1, 0.1, 0.015, 8);
+  const plateMat = mat(0xFAF0E6);
+  const foodColors = [
+    {c:0xFFD700, h:0.04}, // eggs (yellow mound)
+    {c:0xD2691E, h:0.06}, // toast (brown slab)
+    {c:0xFF6347, h:0.05}, // fruit/apple
+    {c:0xF5DEB3, h:0.05}, // sandwich/bread
+    {c:0xEEDD82, h:0.04}, // pancake
+    {c:0xFFA500, h:0.04}, // orange
+  ];
+  for(let fi = 0; fi < BFP.foodCount; fi++){
+    const col = fi % 2 === 0 ? 0 : 1;
+    const row = Math.floor(fi / 2);
+    const fx = cx + (col - 0.5) * 1.4 + rand(-0.15, 0.15);
+    const fz = cz + (row / (BFP.foodCount/2 - 1) - 0.5) * 0.55;
+    const fd = foodColors[fi % foodColors.length];
+    // Plate
+    const plate = new THREE.Mesh(plateGeo, plateMat);
+    plate.position.set(fx, tableH + 0.01, fz); g.add(plate);
+    // Food on plate
+    const foodGeo = fi % 3 === 0
+      ? new THREE.SphereGeometry(0.06, 6, 5)
+      : new THREE.BoxGeometry(0.1, fd.h, 0.08);
+    const food = new THREE.Mesh(foodGeo, mat(fd.c, {rough:0.9}));
+    food.position.set(fx, tableH + 0.03 + fd.h/2, fz);
+    food.castShadow = true; g.add(food);
+    BFP.foodItems.push({plate, food, served: false});
+  }
+
+  // ── Milk cartons / cups cluster ──
+  const cupMat = mat(0xFFFFFF, {rough:0.8});
+  const milkMat = mat(0xF0E0D0, {rough:0.7});
+  for(let ci = 0; ci < 6; ci++){
+    const mx = cx + 0.9 + rand(-0.1, 0.1);
+    const mz = cz + (ci - 2.5) * 0.14;
+    const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.035, 0.12, 6), cupMat);
+    cup.position.set(mx, tableH + 0.06, mz); g.add(cup);
+  }
+  // Small milk cartons (red rectangles)
+  for(let mi = 0; mi < 4; mi++){
+    const mx = cx - 0.9 + rand(-0.1, 0.1);
+    const mz = cz + (mi - 1.5) * 0.16;
+    const carton = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.1, 0.06), mat(0xCC0000, {rough:0.8}));
+    carton.position.set(mx, tableH + 0.05, mz); g.add(carton);
+  }
+
+  // ── Napkin stacks ──
+  for(let ni = 0; ni < 3; ni++){
+    const nx = cx + (ni - 1) * 0.6;
+    const nz = cz + 0.35;
+    const napkin = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, 0.12), whiteMat);
+    napkin.position.set(nx, tableH + 0.02, nz); g.add(napkin);
+  }
+
+  // ── Banner / sign behind the table ──
+  // Two poles
+  for(let pi = -1; pi <= 1; pi += 2){
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 2.8, 6), metalMat);
+    pole.position.set(cx + pi * 1.8, 1.4, cz - 0.7);
+    pole.castShadow = true; g.add(pole);
+  }
+  // Banner (cloth)
+  const banner = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.7, 0.02), mat(0x111111));
+  banner.position.set(cx, 2.4, cz - 0.7); g.add(banner);
+  // Banner text lines (simplified as white bars)
+  const barMat = mat(0xFFFFFF);
+  const bannerBar1 = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.08, 0.025), barMat);
+  bannerBar1.position.set(cx, 2.52, cz - 0.71); g.add(bannerBar1);
+  const bannerBar2 = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.06, 0.025), barMat);
+  bannerBar2.position.set(cx, 2.38, cz - 0.71); g.add(bannerBar2);
+  // "FREE BREAKFAST" in smaller bars (representing letters abstractly)
+  const titleBar = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.1, 0.025), mat(0xFFD700));
+  titleBar.position.set(cx, 2.55, cz - 0.715); g.add(titleBar);
+
+  // ── Community posters on wall/backdrop ──
+  // Poster board behind banner
+  const board = new THREE.Mesh(new THREE.BoxGeometry(4.0, 3.0, 0.06), mat(0x4A3728, {rough:0.9}));
+  board.position.set(cx, 1.5, cz - 0.85); board.castShadow = true; g.add(board);
+
+  // Individual posters
+  const posterColors = [0xF5DEB3, 0xFFE4C4, 0xFAEBD7, 0xFFF8DC];
+  const posterData = [
+    {x:-1.2, y:1.8, w:0.6, h:0.45},
+    {x:-0.4, y:1.2, w:0.55, h:0.4},
+    {x:0.5,  y:1.85, w:0.5, h:0.5},
+    {x:1.3,  y:1.3, w:0.55, h:0.45},
+    {x:-0.8, y:0.7, w:0.45, h:0.35},
+    {x:0.9,  y:0.65, w:0.5, h:0.38},
+  ];
+  posterData.forEach((pd, i) => {
+    const pm = mat(posterColors[i % posterColors.length], {rough:0.95});
+    const poster = new THREE.Mesh(new THREE.PlaneGeometry(pd.w, pd.h), pm);
+    poster.position.set(cx + pd.x, pd.y, cz - 0.8);
+    g.add(poster);
+    // Text lines on poster
+    for(let tl = 0; tl < 2 + Math.floor(Math.random()*2); tl++){
+      const textLine = new THREE.Mesh(
+        new THREE.BoxGeometry(pd.w * 0.7 * rand(0.5,1), 0.02, 0.005),
+        mat(0x333333)
+      );
+      textLine.position.set(cx + pd.x, pd.y + 0.1 - tl * 0.07, cz - 0.78);
+      g.add(textLine);
+    }
+  });
+
+  // ── Simple awning/canopy over station ──
+  const canopyMat = mat(0x2a2a2a, {rough:0.8, transparent:true, opacity:0.85});
+  const canopy = new THREE.Mesh(new THREE.BoxGeometry(4.5, 0.05, 2.5), canopyMat);
+  canopy.position.set(cx, 2.9, cz - 0.1); canopy.castShadow = true; g.add(canopy);
+  // Canopy support poles
+  [[-2, -1.1],[2, -1.1],[-2, 1.1],[2, 1.1]].forEach(([px, pz]) => {
+    const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 2.9, 6), metalMat);
+    sp.position.set(cx + px, 1.45, cz + pz); g.add(sp);
+  });
+
+  scene.add(g);
+  BFP.stationGroup = g;
+
+  // ── Community building (children walk into this after eating) ──
+  const bldgX = 15.5, bldgZ = cz;
+  const bldgW = 4, bldgD = 5, bldgH = 5;
+  const bldgMat = mat(0x6B3A2A, {rough:0.9});
+  const bldgBody = new THREE.Mesh(new THREE.BoxGeometry(bldgW, bldgH, bldgD), bldgMat);
+  bldgBody.position.set(bldgX, bldgH/2, bldgZ); bldgBody.castShadow = true; scene.add(bldgBody);
+  // Roof
+  const roofMat = mat(0x3a2a1a, {rough:0.85});
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(bldgW + 0.4, 0.15, bldgD + 0.4), roofMat);
+  roof.position.set(bldgX, bldgH + 0.07, bldgZ); scene.add(roof);
+  // Door (on the -x face, facing the food station)
+  const doorMat = mat(0x3D2917, {rough:0.8});
+  const door = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 1.6), doorMat);
+  door.position.set(bldgX - bldgW/2 - 0.01, 0.8, bldgZ); scene.add(door);
+  // Door frame
+  const frameMat = mat(0x5C3322, {rough:0.85});
+  const frameL = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.7, 0.06), frameMat);
+  frameL.position.set(bldgX - bldgW/2 - 0.01, 0.85, bldgZ - 0.38); scene.add(frameL);
+  const frameR = frameL.clone(); frameR.position.z = bldgZ + 0.38; scene.add(frameR);
+  const frameT = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.82), frameMat);
+  frameT.position.set(bldgX - bldgW/2 - 0.01, 1.65, bldgZ); scene.add(frameT);
+  // Windows
+  const winMat = mat(0xffcc66, {rough:0.5, emissive:0xffcc66, emissiveIntensity:0.1, transparent:true, opacity:0.6});
+  [[-0.8, 2.5], [0.8, 2.5], [-0.8, 4], [0.8, 4]].forEach(([wz, wy]) => {
+    const win = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.6), winMat);
+    win.position.set(bldgX - bldgW/2 - 0.01, wy, bldgZ + wz); scene.add(win);
+  });
+  // Small sign above door
+  const signBoard = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.3, 0.03), mat(0x111111));
+  signBoard.position.set(bldgX - bldgW/2 - 0.02, 1.95, bldgZ); scene.add(signBoard);
+  const signText = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.08, 0.035), mat(0xFFFFFF));
+  signText.position.set(bldgX - bldgW/2 - 0.025, 1.95, bldgZ); scene.add(signText);
+  // Register building as obstacle
+  BFP.buildingDoorX = bldgX - bldgW/2;
+  BFP.buildingDoorZ = bldgZ;
+}
+
+// ── Build a child figure (smaller proportions) ──
+function buildBreakfastChild(){
+  const g = new THREE.Group();
+  const skinTones = [0x6B3A1F, 0x8B5A2B, 0x7A5535, 0xA0704C, 0x5C3310, 0x4A2808, 0xB07848];
+  const skinM = mat(skinTones[floor(Math.random()*skinTones.length)]);
+  const shirtColors = [0xE84C3D, 0x3498DB, 0x2ECC71, 0xF39C12, 0x9B59B6, 0xFF6B35, 0x45B7D1, 0xE8D44D];
+  const shirtM = mat(shirtColors[floor(Math.random()*shirtColors.length)]);
+  const pantsM = mat(Math.random()>0.5 ? 0x2C3E50 : 0x3D2917);
+  const hScale = rand(0.65, 0.8); // child-sized
+
+  // Torso
+  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.35, 7), shirtM);
+  torso.position.y = 0.7 * hScale; torso.castShadow = true; g.add(torso);
+  // Legs
+  [-0.05, 0.05].forEach(lx => {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.035, 0.3, 6), pantsM);
+    leg.position.set(lx, 0.35 * hScale, 0); leg.castShadow = true; g.add(leg); leg._isLeg = true;
+  });
+  // Arms
+  const armGeo = new THREE.CylinderGeometry(0.03, 0.025, 0.25, 6);
+  const lArm = new THREE.Mesh(armGeo, shirtM);
+  lArm.position.set(-0.14, 0.7 * hScale, 0); g.add(lArm);
+  const rArm = new THREE.Mesh(armGeo, shirtM);
+  rArm.position.set(0.14, 0.7 * hScale, 0); g.add(rArm);
+  // Head
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 7), skinM);
+  head.position.y = 1.05 * hScale; head.castShadow = true; g.add(head);
+  // Hair
+  const hairStyles = [0x1a1008, 0x0a0a0a, 0x2a1a0a];
+  const hair = new THREE.Mesh(
+    new THREE.SphereGeometry(0.095, 8, 6, 0, TAU, 0, PI*0.55),
+    mat(hairStyles[floor(Math.random()*hairStyles.length)])
+  );
+  hair.position.y = 1.08 * hScale; g.add(hair);
+  // Shoes
+  [-0.05, 0.05].forEach(sx => {
+    const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.035, 0.1), mat(0x333333));
+    shoe.position.set(sx, 0.018, 0.01); g.add(shoe);
+  });
+  // Some children carry a tray (paper plate in hands)
+  let tray = null;
+  if(Math.random() > 0.4){
+    tray = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.01, 8), mat(0xFAF0E6));
+    tray.position.set(0, 0.55 * hScale, 0.12);
+    tray.visible = false; // only visible after receiving food
+    g.add(tray);
+  }
+
+  return {
+    group: g, lArm, rArm, head, tray,
+    legs: g.children.filter(c => c._isLeg),
+    hScale,
+    phase: rand(0, TAU),
+    walkSpeed: rand(0.8, 1.2),
+    // State machine: 'approaching' → 'waiting' → 'receiving' → 'leaving' → 'despawned' → 'approaching'
+    state: 'approaching',
+    waitTimer: 0,
+    receiveTimer: 0,
+    queueIdx: 0, // position in line
+    pos: {x: 0, z: 0},
+    targetX: 0, targetZ: 0,
+    yaw: 0,
+  };
+}
+
+// ── Build a volunteer figure (adult, apron) ──
+function buildVolunteer(x, z, rot, skinColor, shirtColor){
+  const g = new THREE.Group();
+  const skinM = mat(skinColor);
+  const shirtM = mat(shirtColor);
+  const apronM = mat(0xF5F0E8, {rough:0.85});
+  const pantsM = mat(0x1a1a2e);
+  const hScale = rand(0.95, 1.05);
+
+  // Torso
+  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.19, 0.55, 7), shirtM);
+  torso.position.y = 1.05 * hScale; torso.castShadow = true; g.add(torso);
+  // Apron
+  const apron = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.4, 0.05), apronM);
+  apron.position.set(0, 0.95 * hScale, 0.1); g.add(apron);
+  // Apron string
+  const string = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.015, 0.01), apronM);
+  string.position.set(0, 1.12 * hScale, 0.08); g.add(string);
+  // Legs
+  [-0.08, 0.08].forEach(lx => {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.055, 0.5, 6), pantsM);
+    leg.position.set(lx, 0.48 * hScale, 0); leg.castShadow = true; g.add(leg);
+  });
+  // Arms
+  const armGeo = new THREE.CylinderGeometry(0.045, 0.04, 0.4, 6);
+  const lArm = new THREE.Mesh(armGeo, shirtM);
+  lArm.position.set(-0.22, 1.05 * hScale, 0); g.add(lArm);
+  const rArm = new THREE.Mesh(armGeo, shirtM);
+  rArm.position.set(0.22, 1.05 * hScale, 0); g.add(rArm);
+  // Head
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 7), skinM);
+  head.position.y = 1.52 * hScale; head.castShadow = true; g.add(head);
+  // Hair / head covering
+  if(Math.random() > 0.5){
+    // Head wrap / bandana
+    const wrap = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 6, 0, TAU, 0, PI*0.5),
+      mat(Math.random()>0.5 ? 0x8B0000 : 0x2F4F4F));
+    wrap.position.y = 1.56 * hScale; g.add(wrap);
+  } else {
+    // Natural hair
+    const hair = new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 6, 0, TAU, 0, PI*0.5), mat(0x1a1008));
+    hair.position.y = 1.55 * hScale; g.add(hair);
+  }
+  // Shoes
+  [-0.08, 0.08].forEach(sx => {
+    const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.05, 0.16), mat(0x222222));
+    shoe.position.set(sx, 0.025, 0.02); g.add(shoe);
+  });
+  // Warm smile — slightly upturned mouth line
+  const smile = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.008, 0.005), mat(0x222222));
+  smile.position.set(0, 1.44 * hScale, 0.125); g.add(smile);
+
+  g.position.set(x, 0, z);
+  g.rotation.y = rot;
+  scene.add(g);
+
+  return {group: g, lArm, rArm, head, hScale, servePhase: rand(0, TAU), serving: false, serveTimer: 0};
+}
+
+function buildBreakfastProgram(){
+  buildBreakfastStation();
+
+  // ── Volunteers (3 behind the table, facing +z toward children) ──
+  const cx = BFP.cx, cz = BFP.cz;
+  const volRot = PI; // facing toward the children (toward +z)
+  const volSkins = [0x6B3A1F, 0x8B5A2B, 0xA0704C];
+  const volShirts = [0x8B0000, 0x2F4F4F, 0x4A3728];
+  for(let vi = 0; vi < 3; vi++){
+    const vx = cx + (vi - 1) * 1.2;
+    const vz = cz - 0.55;
+    const vol = buildVolunteer(vx, vz, volRot, volSkins[vi], volShirts[vi]);
+    BFP.volunteers.push(vol);
+  }
+
+  // ── Children queue ──
+  for(let ci = 0; ci < BFP.CHILD_COUNT; ci++){
+    const child = buildBreakfastChild();
+    child.queueIdx = ci;
+    // Stagger initial positions in a line approaching the table
+    const lineX = cx + rand(-0.3, 0.3);
+    const lineZ = cz + 1.5 + ci * 1.2 + rand(-0.1, 0.1);
+    child.pos.x = lineX;
+    child.pos.z = lineZ;
+    child.targetX = cx + rand(-0.3, 0.3); // slight offset so line looks natural
+    child.targetZ = cz + 0.55; // in front of table
+    child.group.position.set(lineX, 0, lineZ);
+    child.group.rotation.y = PI; // face toward table (-z direction)
+    child.yaw = PI;
+    // First child is already approaching, rest wait
+    if(ci > 0) child.state = 'approaching';
+    scene.add(child.group);
+    BFP.children.push(child);
+  }
+
+  BFP.serveTimer = 0;
+  BFP.nextFoodIdx = 0;
+}
+
+// Table AABB for children pathfinding (padded slightly)
+const BFP_TABLE_AABB = {
+  minX: BFP.cx - 2.0, maxX: BFP.cx + 2.0,
+  minZ: BFP.cz - 1.1, maxZ: BFP.cz + 0.65
+};
+
+// Test if a line from (ax,az) to (bx,bz) crosses the table AABB
+function bfpTableBlocks(ax, az, bx, bz){
+  const tb = BFP_TABLE_AABB;
+  // Simple: check if target is inside or if we'd cross the AABB
+  // Use padded AABB test at several sample points
+  const steps = 5;
+  for(let i = 1; i < steps; i++){
+    const f = i / steps;
+    const sx = ax + (bx - ax) * f;
+    const sz = az + (bz - az) * f;
+    if(sx >= tb.minX && sx <= tb.maxX && sz >= tb.minZ && sz <= tb.maxZ) return true;
+  }
+  return false;
+}
+
+// Compute a waypoint to go around the table
+function bfpWaypointAround(fromX, fromZ, toX, toZ){
+  const tb = BFP_TABLE_AABB;
+  const midX = (tb.minX + tb.maxX) / 2;
+  // Go around the +x side (right side of table)
+  if(fromX >= midX){
+    return {x: tb.maxX + 0.6, z: (fromZ + toZ) / 2};
+  } else {
+    return {x: tb.minX - 0.6, z: (fromZ + toZ) / 2};
+  }
+}
+
+const BFP_CHILD_AVOID_R = 1.8;  // children dodge player within this range
+const BFP_CHILD_AVOID_PUSH = 1.5;
+
+function animateBreakfast(dt){
+  const cx = BFP.cx, cz = BFP.cz;
+  const t = performance.now() / 1000;
+  const px = playerPos.x, pz = playerPos.z;
+
+  // ── Player collision with volunteers (soft body push) ──
+  BFP.volunteers.forEach(vol => {
+    const vx = vol.group.position.x, vz = vol.group.position.z;
+    const ddx = px - vx, ddz = pz - vz;
+    const dd = Math.sqrt(ddx*ddx + ddz*ddz);
+    const minDist = 0.5; // volunteer body radius
+    if(dd < minDist && dd > 0.001){
+      const push = minDist - dd;
+      playerPos.x += (ddx / dd) * push;
+      playerPos.z += (ddz / dd) * push;
+      const nx = ddx / dd, nz = ddz / dd;
+      const vDotN = playerVelX * nx + playerVelZ * nz;
+      if(vDotN < 0){ playerVelX -= vDotN * nx; playerVelZ -= vDotN * nz; }
+    }
+  });
+
+  // ── Player collision with children (soft body push) ──
+  BFP.children.forEach(child => {
+    if(child.state === 'despawned') return;
+    const cdx = px - child.pos.x, cdz = pz - child.pos.z;
+    const cd = Math.sqrt(cdx*cdx + cdz*cdz);
+    const minDist = 0.4; // child body radius
+    if(cd < minDist && cd > 0.001){
+      const push = minDist - cd;
+      playerPos.x += (cdx / cd) * push;
+      playerPos.z += (cdz / cd) * push;
+      const nx = cdx / cd, nz = cdz / cd;
+      const vDotN = playerVelX * nx + playerVelZ * nz;
+      if(vDotN < 0){ playerVelX -= vDotN * nx; playerVelZ -= vDotN * nz; }
+    }
+  });
+
+  // ── Volunteer idle + serve animations ──
+  BFP.volunteers.forEach((vol, vi) => {
+    const sp = vol.servePhase + t;
+    // Gentle idle sway
+    vol.group.position.y = sin(sp * 1.2) * 0.008;
+    // Arms: default resting, or serving motion
+    if(vol.serving){
+      vol.serveTimer -= dt;
+      // Reach forward to hand food
+      const prog = 1 - Math.max(0, vol.serveTimer) / 1.5;
+      if(prog < 0.4){
+        vol.rArm.rotation.x = lerp(0, -1.0, prog / 0.4);
+        vol.lArm.rotation.x = lerp(0, -0.4, prog / 0.4);
+      } else if(prog < 0.7){
+        vol.rArm.rotation.x = -1.0;
+        vol.lArm.rotation.x = -0.4;
+      } else {
+        const ret = (prog - 0.7) / 0.3;
+        vol.rArm.rotation.x = lerp(-1.0, -0.15, ret);
+        vol.lArm.rotation.x = lerp(-0.4, 0.15, ret);
+      }
+      if(vol.serveTimer <= 0) vol.serving = false;
+    } else {
+      vol.rArm.rotation.x = -0.15 + sin(sp * 0.8 + vi) * 0.05;
+      vol.lArm.rotation.x = 0.15 + sin(sp * 0.8 + vi + 1) * 0.05;
+    }
+    vol.head.rotation.y = sin(sp * 0.4 + vi * 2) * 0.15;
+  });
+
+  // ── Children state machine ──
+  BFP.children.forEach((child, ci) => {
+    const spd = child.walkSpeed;
+    const ph = child.phase;
+
+    // ── Player avoidance (children move out of the way) ──
+    let avoidX = 0, avoidZ = 0;
+    if(child.state !== 'despawned' && child.state !== 'waiting' && child.state !== 'receiving'){
+      const adx = child.pos.x - px, adz = child.pos.z - pz;
+      const aDist = Math.sqrt(adx*adx + adz*adz);
+      if(aDist < BFP_CHILD_AVOID_R && aDist > 0.01){
+        const str = 1.0 - (aDist / BFP_CHILD_AVOID_R);
+        const push = str * str * BFP_CHILD_AVOID_PUSH * dt;
+        avoidX = (adx / aDist) * push;
+        avoidZ = (adz / aDist) * push;
+      }
+    }
+
+    if(child.state === 'approaching'){
+      // Queue target: first child heads to front of table, others line up behind
+      let qTargetZ = cz + 0.75;
+      let qTargetX = cx;
+      const ahead = BFP.children.filter(c => c.queueIdx < child.queueIdx && c.state !== 'leaving' && c.state !== 'despawned');
+      if(ahead.length > 0){
+        const lastAhead = ahead.reduce((a, b) => a.pos.z > b.pos.z ? a : b);
+        qTargetZ = Math.max(lastAhead.pos.z + 0.8, cz + 0.75);
+      }
+
+      // Check if direct path crosses table — if so, use waypoint
+      let immX = qTargetX, immZ = qTargetZ;
+      if(!child._waypoint && bfpTableBlocks(child.pos.x, child.pos.z, qTargetX, qTargetZ)){
+        child._waypoint = bfpWaypointAround(child.pos.x, child.pos.z, qTargetX, qTargetZ);
+      }
+      if(child._waypoint){
+        immX = child._waypoint.x;
+        immZ = child._waypoint.z;
+        // If reached waypoint, clear it
+        const wdx = immX - child.pos.x, wdz = immZ - child.pos.z;
+        if(Math.sqrt(wdx*wdx + wdz*wdz) < 0.4) child._waypoint = null;
+      }
+
+      const dx = immX - child.pos.x;
+      const dz = immZ - child.pos.z;
+      const dist = Math.sqrt(dx*dx + dz*dz);
+
+      if(dist > 0.15){
+        const step = Math.min(spd * dt, dist);
+        child.pos.x += (dx / dist) * step + avoidX;
+        child.pos.z += (dz / dist) * step + avoidZ;
+        child.legs.forEach((leg, li) => { leg.rotation.x = sin(t*4 + ph) * 0.3 * (li===0?1:-1); });
+        child.lArm.rotation.x = sin(t*4 + ph) * 0.2;
+        child.rArm.rotation.x = -sin(t*4 + ph) * 0.2;
+        const targetYaw = Math.atan2(dx, dz);
+        let yd = targetYaw - child.yaw;
+        while(yd > PI) yd -= TAU;
+        while(yd < -PI) yd += TAU;
+        child.yaw += yd * Math.min(1, dt * 6);
+      } else {
+        child.legs.forEach(leg => { leg.rotation.x = 0; });
+        child.lArm.rotation.x = 0; child.rArm.rotation.x = 0;
+        const anyoneAhead = BFP.children.some(c => c.queueIdx < child.queueIdx && (c.state === 'approaching' || c.state === 'waiting'));
+        if(!anyoneAhead && Math.abs(child.pos.z - (cz + 0.75)) < 0.4){
+          child.state = 'waiting';
+          child.waitTimer = 0.5 + rand(0, 0.5);
+          child.yaw = PI;
+          child._waypoint = null;
+        }
+      }
+    }
+    else if(child.state === 'waiting'){
+      child.rArm.rotation.x = lerp(child.rArm.rotation.x, -0.6, dt * 3);
+      child.lArm.rotation.x = lerp(child.lArm.rotation.x, -0.6, dt * 3);
+      child.waitTimer -= dt;
+      child.group.position.y = sin(t * 2 + ph) * 0.005;
+      child.head.rotation.y = sin(t * 0.8 + ph) * 0.1;
+
+      if(child.waitTimer <= 0){
+        child.state = 'receiving';
+        child.receiveTimer = 1.5;
+        const volIdx = ci % BFP.volunteers.length;
+        BFP.volunteers[volIdx].serving = true;
+        BFP.volunteers[volIdx].serveTimer = 1.5;
+        if(BFP.nextFoodIdx < BFP.foodItems.length){
+          const fi = BFP.foodItems[BFP.nextFoodIdx];
+          fi.served = true;
+          fi.food.visible = false;
+          fi.plate.visible = false;
+          BFP.nextFoodIdx++;
+        }
+      }
+    }
+    else if(child.state === 'receiving'){
+      child.receiveTimer -= dt;
+      const prog = 1 - Math.max(0, child.receiveTimer) / 1.5;
+      if(prog < 0.5){
+        child.rArm.rotation.x = lerp(-0.6, -0.8, prog / 0.5);
+        child.lArm.rotation.x = lerp(-0.6, -0.8, prog / 0.5);
+      } else {
+        child.rArm.rotation.x = lerp(-0.8, -0.3, (prog - 0.5) / 0.5);
+        child.lArm.rotation.x = lerp(-0.8, -0.3, (prog - 0.5) / 0.5);
+        if(child.tray && prog > 0.6) child.tray.visible = true;
+      }
+      if(child.receiveTimer <= 0){
+        child.state = 'leaving';
+        // Walk toward the community building door
+        child.targetX = BFP.buildingDoorX + 0.1;
+        child.targetZ = BFP.buildingDoorZ + rand(-0.2, 0.2);
+        // Set a waypoint to go around the table edge first
+        child._waypoint = {x: cx + 2.5, z: cz + 0.75};
+      }
+    }
+    else if(child.state === 'leaving'){
+      // Check for waypoint first
+      let immX = child.targetX, immZ = child.targetZ;
+      if(child._waypoint){
+        immX = child._waypoint.x;
+        immZ = child._waypoint.z;
+        const wdx = immX - child.pos.x, wdz = immZ - child.pos.z;
+        if(Math.sqrt(wdx*wdx + wdz*wdz) < 0.5) child._waypoint = null;
+      }
+
+      const dx = immX - child.pos.x;
+      const dz = immZ - child.pos.z;
+      const dist = Math.sqrt(dx*dx + dz*dz);
+
+      if(dist > 0.3){
+        const step = Math.min(spd * 1.1 * dt, dist);
+        child.pos.x += (dx / dist) * step + avoidX;
+        child.pos.z += (dz / dist) * step + avoidZ;
+        child.legs.forEach((leg, li) => { leg.rotation.x = sin(t*4 + ph) * 0.3 * (li===0?1:-1); });
+        child.lArm.rotation.x = -0.3 + sin(t*3.5 + ph) * 0.1;
+        child.rArm.rotation.x = -0.3 - sin(t*3.5 + ph) * 0.1;
+        const targetYaw = Math.atan2(dx, dz);
+        let yd = targetYaw - child.yaw;
+        while(yd > PI) yd -= TAU;
+        while(yd < -PI) yd += TAU;
+        child.yaw += yd * Math.min(1, dt * 6);
+      } else if(!child._waypoint){
+        child.state = 'despawned';
+        child.group.visible = false;
+        child.respawnTimer = rand(2, 5);
+      }
+    }
+    else if(child.state === 'despawned'){
+      child.respawnTimer -= dt;
+      if(child.respawnTimer <= 0){
+        child.state = 'approaching';
+        child.group.visible = true;
+        // Children come out of the school building door
+        child.pos.x = BFP.buildingDoorX - 0.3;
+        child.pos.z = BFP.buildingDoorZ + rand(-0.2, 0.2);
+        child.queueIdx = Math.max(...BFP.children.map(c => c.queueIdx)) + 1;
+        if(child.tray) child.tray.visible = false;
+        child._waypoint = null;
+        if(BFP.nextFoodIdx >= BFP.foodItems.length){
+          BFP.nextFoodIdx = 0;
+          BFP.foodItems.forEach(fi => {
+            fi.served = false;
+            fi.food.visible = true;
+            fi.plate.visible = true;
+          });
+        }
+      }
+    }
+
+    // Apply position and rotation
+    child.group.position.x = child.pos.x;
+    child.group.position.z = child.pos.z;
+    child.group.rotation.y = child.yaw;
+  });
+}
+
+// ═══════════════════════════════════
+//  COLLISION OBSTACLES
+// ═══════════════════════════════════
+
+// ── DISTANT PROTEST MARCH (LOOP AROUND MAP) ──────────
+const marchGroup = [];
+const MARCH_DIST = 22;
+const MARCH_SPEED = 1.6;
+const MARCH_ROWS = 4;
+const MARCH_PER_ROW = 10;
+const LOOP_SIDES = [
+  {axis:'x', dir:1,  fx:0, fz:-MARCH_DIST, rot:PI/2},
+  {axis:'z', dir:1,  fx:MARCH_DIST, fz:0,  rot:0},
+  {axis:'x', dir:-1, fx:0, fz:MARCH_DIST,  rot:-PI/2},
+  {axis:'z', dir:-1, fx:-MARCH_DIST, fz:0,  rot:PI},
+];
+const LOOP_HALF = MARCH_DIST;
+// Total perimeter of loop = 4 sides × 2×MARCH_DIST = 8×MARCH_DIST
+const LOOP_PERIM = 8 * MARCH_DIST;
+// Corner radius for smooth turning
+const CORNER_R = 1.5;
+
+function buildDistantStreet(){
+  const streetMat = mat(0x2a2a2a, {rough:0.95});
+  const swMat = mat(0x777770, {rough:0.9});
+  const brickColors = [0x6B3A2A,0x5C3322,0x7A4433,0x4E2E1E,0x604030,0x553328];
+  const poleMat = mat(0x5a4a3a, {rough:0.85});
+  const distCarMats = [mat(0x333340,{rough:0.8}), mat(0x2a3a2a,{rough:0.8})];
+
+  LOOP_SIDES.forEach((side) => {
+    const isX = side.axis === 'x';
+    const sW = isX ? 60 : 6, sD = isX ? 6 : 60;
+    const st = new THREE.Mesh(new THREE.PlaneGeometry(sW, sD), streetMat);
+    st.rotation.x = -PI/2; st.position.set(side.fx, 0.01, side.fz);
+    st.receiveShadow = true; scene.add(st);
+
+    [-1,1].forEach(s => {
+      const sw = isX
+        ? new THREE.Mesh(new THREE.BoxGeometry(60,0.12,1.8), swMat)
+        : new THREE.Mesh(new THREE.BoxGeometry(1.8,0.12,60), swMat);
+      sw.position.set(side.fx+(isX?0:s*3.9), 0.06, side.fz+(isX?s*3.9:0));
+      sw.receiveShadow = true; scene.add(sw);
+    });
+
+    const outDir = isX ? (side.fz<0?-1:1) : (side.fx<0?-1:1);
+    for(let t=-28; t<=28; t+=rand(5,7.5)){
+      const bw=rand(4,6.5), bh=rand(6,14), bd=rand(4,5.5);
+      const bCol=brickColors[floor(Math.random()*brickColors.length)];
+      if(isX){
+        const b=new THREE.Mesh(new THREE.BoxGeometry(bw,bh,bd), mat(bCol,{rough:0.9}));
+        b.position.set(side.fx+t, bh/2, side.fz+outDir*6.5);
+        b.castShadow=true; scene.add(b);
+        const wM=mat(0xffcc66,{rough:0.5,emissive:0xffcc66,emissiveIntensity:0.1,transparent:true,opacity:0.6});
+        for(let wy=2;wy<bh-1;wy+=2.2) for(let wx=-bw/2+0.8;wx<bw/2-0.5;wx+=1.3)
+          if(Math.random()>0.25){
+            const w=new THREE.Mesh(new THREE.PlaneGeometry(0.5,0.7),wM);
+            w.position.set(side.fx+t+wx,wy,side.fz+outDir*6.5-outDir*bd/2-0.01);
+            scene.add(w);
+          }
+      } else {
+        const b=new THREE.Mesh(new THREE.BoxGeometry(bd,bh,bw), mat(bCol,{rough:0.9}));
+        b.position.set(side.fx+outDir*6.5, bh/2, side.fz+t);
+        b.castShadow=true; scene.add(b);
+        const wM=mat(0xffcc66,{rough:0.5,emissive:0xffcc66,emissiveIntensity:0.1,transparent:true,opacity:0.6});
+        for(let wy=2;wy<bh-1;wy+=2.2) for(let wz=-bw/2+0.8;wz<bw/2-0.5;wz+=1.3)
+          if(Math.random()>0.25){
+            const w=new THREE.Mesh(new THREE.PlaneGeometry(0.5,0.7),wM);
+            w.position.set(side.fx+outDir*6.5-outDir*bd/2-0.01,wy,side.fz+t+wz);
+            w.rotation.y=PI/2; scene.add(w);
+          }
+      }
+    }
+
+    const inDir=-outDir;
+    for(let pt=-25;pt<=25;pt+=12){
+      if(isX){
+        const p=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.08,7,6),poleMat);
+        p.position.set(side.fx+pt+rand(-1,1),3.5,side.fz+inDir*3.5); scene.add(p);
+        const br=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,2.2,4),poleMat);
+        br.position.set(side.fx+pt+rand(-1,1),6.8,side.fz+inDir*3.5); br.rotation.z=PI/2; scene.add(br);
+      } else {
+        const p=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.08,7,6),poleMat);
+        p.position.set(side.fx+inDir*3.5,3.5,side.fz+pt+rand(-1,1)); scene.add(p);
+        const br=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,2.2,4),poleMat);
+        br.position.set(side.fx+inDir*3.5,6.8,side.fz+pt+rand(-1,1)); br.rotation.x=PI/2; scene.add(br);
+      }
+    }
+
+    [-20,-8,8,20].forEach(ct => {
+      const cM=distCarMats[floor(Math.random()*2)];
+      if(isX){
+        const cb=new THREE.Mesh(new THREE.BoxGeometry(1.5,0.6,3),cM);
+        cb.position.set(side.fx+ct+rand(-1,1),0.4,side.fz+inDir*3.2); scene.add(cb);
+        const cr=new THREE.Mesh(new THREE.BoxGeometry(1.2,0.4,1.6),cM);
+        cr.position.set(side.fx+ct+rand(-1,1),0.85,side.fz+inDir*3.2); scene.add(cr);
+      } else {
+        const cb=new THREE.Mesh(new THREE.BoxGeometry(3,0.6,1.5),cM);
+        cb.position.set(side.fx+inDir*3.2,0.4,side.fz+ct+rand(-1,1)); scene.add(cb);
+        const cr=new THREE.Mesh(new THREE.BoxGeometry(1.6,0.4,1.2),cM);
+        cr.position.set(side.fx+inDir*3.2,0.85,side.fz+ct+rand(-1,1)); scene.add(cr);
+      }
+    });
+  });
+}
+
+function buildMarcher(startT){
+  const g=new THREE.Group();
+  const skinTones=[0x6B3A1F,0x8B5A2B,0x7A5535,0xA0704C,0x5C3310,0x4A2808];
+  const skinM=mat(skinTones[floor(Math.random()*skinTones.length)]);
+  const jacketColors=[0x1a1a1a,0x222222,0x181818,0x252525,0x151515];
+  const jacketM=mat(jacketColors[floor(Math.random()*jacketColors.length)],{rough:0.75});
+  const pantsM=mat(0x1a1a2e);
+  const hScale=rand(0.9,1.1);
+
+  const torso=new THREE.Mesh(new THREE.CylinderGeometry(0.16,0.19,0.55,7),jacketM);
+  torso.position.y=1.05*hScale; torso.castShadow=true; g.add(torso);
+
+  [-0.08,0.08].forEach(lx=>{
+    const leg=new THREE.Mesh(new THREE.CylinderGeometry(0.065,0.055,0.5,6),pantsM);
+    leg.position.set(lx,0.48*hScale,0); leg.castShadow=true; g.add(leg); leg._isLeg=true;
+  });
+
+  const armGeo=new THREE.CylinderGeometry(0.045,0.04,0.4,6);
+  const lArm=new THREE.Mesh(armGeo,jacketM);
+  lArm.position.set(-0.22,1.05*hScale,0); g.add(lArm);
+  const rArm=new THREE.Mesh(armGeo,jacketM);
+  rArm.position.set(0.22,1.05*hScale,0); g.add(rArm);
+
+  const headM=new THREE.Mesh(new THREE.SphereGeometry(0.13,8,7),skinM);
+  headM.position.y=1.52*hScale; headM.castShadow=true; g.add(headM);
+
+  const beretMat=mat(0x111111);
+  const beret=new THREE.Mesh(new THREE.SphereGeometry(0.15,10,5,0,TAU,0,PI*0.45),beretMat);
+  beret.position.y=1.6*hScale; beret.rotation.x=-0.15; g.add(beret);
+  const brim=new THREE.Mesh(new THREE.CylinderGeometry(0.16,0.16,0.015,10),beretMat);
+  brim.position.y=1.55*hScale; g.add(brim);
+
+  [-0.08,0.08].forEach(sx=>{
+    const shoe=new THREE.Mesh(new THREE.BoxGeometry(0.1,0.05,0.16),mat(0x222222));
+    shoe.position.set(sx,0.025,0.02); g.add(shoe);
+  });
+
+  const role=Math.random();
+  let hasSign=false, hasFist=false;
+  if(role<0.35){
+    hasSign=true;
+    const stick=new THREE.Mesh(new THREE.CylinderGeometry(0.015,0.015,1.4,4),mat(0x8B6240));
+    stick.position.set(0.12,1.9*hScale,0.05); g.add(stick);
+    const placard=new THREE.Mesh(new THREE.BoxGeometry(0.5,0.3,0.02),mat(0xf0e8d0,{rough:0.9}));
+    placard.position.set(0.12,2.55*hScale,0.05); g.add(placard);
+    const ts1=new THREE.Mesh(new THREE.BoxGeometry(0.4,0.06,0.025),mat(0x222222));
+    ts1.position.set(0.12,2.55*hScale,0.065); g.add(ts1);
+    const ts2=new THREE.Mesh(new THREE.BoxGeometry(0.32,0.05,0.025),mat(0x222222));
+    ts2.position.set(0.12,2.46*hScale,0.065); g.add(ts2);
+    rArm.rotation.x=-2.8; rArm.position.y=1.2*hScale;
+  } else if(role<0.55){
+    hasFist=true;
+    rArm.rotation.x=-2.9; rArm.position.y=1.2*hScale;
+    const fist=new THREE.Mesh(new THREE.SphereGeometry(0.04,6,5),skinM);
+    fist.position.set(0.22,1.75*hScale,0.05); g.add(fist);
+  } else {
+    lArm.rotation.x=-0.15; rArm.rotation.x=0.15;
+  }
+
+  return {
+    group:g, lArm, rArm,
+    legs:g.children.filter(c=>c._isLeg),
+    headMesh:headM,
+    phase:rand(0,TAU), walkAmp:rand(0.06,0.12), hScale,
+    hasSign, hasFist,
+    speed:MARCH_SPEED+rand(-0.12,0.12),
+    headTurnPhase:rand(0,TAU), chantPhase:rand(0,TAU),
+    sideIdx:0, t:startT, rowOff:0
+  };
+}
+
+// Convert a perimeter distance (0..LOOP_PERIM) to world position + rotation
+// Marchers walk counterclockwise: bottom(+x), right(+z), top(-x), left(-z)
+function marchPosFromPerim(perim, rowOff){
+  let p = ((perim % LOOP_PERIM) + LOOP_PERIM) % LOOP_PERIM;
+  const D = MARCH_DIST;
+  const sideLen = 2 * D;
+  const sideIdx = Math.floor(p / sideLen);
+  const along = p - sideIdx * sideLen; // 0..sideLen along this side
+  const t = along - D; // -D..+D centered on side
+
+  // Corner blending zone
+  const cZone = CORNER_R;
+  const nearEnd = t > (D - cZone);
+  const nearStart = t < (-D + cZone);
+
+  const side = LOOP_SIDES[sideIdx];
+  const nextSide = LOOP_SIDES[(sideIdx + 1) % 4];
+  const isX = side.axis === 'x';
+
+  let x, z, rot;
+
+  if(nearEnd){
+    // Blend into next side's corner
+    const blend = (t - (D - cZone)) / cZone; // 0..1
+    const angle = blend * PI / 2; // 0..90 degrees of the corner
+    // Corner center
+    let cx, cz;
+    if(sideIdx === 0)      { cx = D;  cz = -D; } // bottom-right
+    else if(sideIdx === 1)  { cx = D;  cz = D;  } // top-right
+    else if(sideIdx === 2)  { cx = -D; cz = D;  } // top-left
+    else                    { cx = -D; cz = -D; } // bottom-left
+    // Radius offset for the turn
+    const r = cZone;
+    if(sideIdx === 0)      { x = cx - r * Math.cos(angle); z = cz + r * Math.sin(angle); }
+    else if(sideIdx === 1)  { x = cx - r * Math.sin(angle); z = cz - r * Math.cos(angle); }
+    else if(sideIdx === 2)  { x = cx + r * Math.cos(angle); z = cz - r * Math.sin(angle); }
+    else                    { x = cx + r * Math.sin(angle); z = cz + r * Math.cos(angle); }
+    // Blend rotation
+    let r1 = side.rot, r2 = nextSide.rot;
+    let rd = r2 - r1;
+    while(rd > PI) rd -= TAU;
+    while(rd < -PI) rd += TAU;
+    rot = r1 + rd * blend;
+  } else {
+    // Straight section
+    if(isX){ x = side.fx + t * side.dir; z = side.fz; }
+    else   { x = side.fx;                z = side.fz + t * side.dir; }
+    rot = side.rot;
+  }
+
+  // Apply row offset perpendicular to march direction
+  x += Math.cos(rot) * rowOff;
+  z -= Math.sin(rot) * rowOff;
+
+  return {x, z, rot};
+}
+
+function buildMarchGroup(){
+  for(let si=0;si<4;si++){
+    for(let row=0;row<MARCH_ROWS;row++){
+      for(let col=0;col<MARCH_PER_ROW;col++){
+        const sideLen = 2 * MARCH_DIST;
+        const basePerim = si * sideLen + (col + 0.5) * (sideLen / MARCH_PER_ROW);
+        const startPerim = basePerim + rand(-2, 2);
+        const m=buildMarcher(startPerim);
+        m.sideIdx=si;
+        m.perim = ((startPerim % LOOP_PERIM) + LOOP_PERIM) % LOOP_PERIM;
+        m.rowOff=(row-1.5)*1.0+rand(-0.15,0.15);
+        const p=marchPosFromPerim(m.perim, m.rowOff);
+        m.group.position.set(p.x,0,p.z);
+        m.group.rotation.y=p.rot;
+        scene.add(m.group);
+        marchGroup.push(m);
+      }
+    }
+  }
+}
+
+const MARCH_AVOID_R = 2.0;   // radius at which marchers start avoiding the player
+const MARCH_AVOID_PUSH = 2.5; // strength of sideways push
+
+function animateMarch(dt){
+  const px = playerPos.x, pz = playerPos.z;
+  marchGroup.forEach(m=>{
+    m.perim = ((m.perim + m.speed * dt) % LOOP_PERIM + LOOP_PERIM) % LOOP_PERIM;
+    const p=marchPosFromPerim(m.perim, m.rowOff);
+    let mx = p.x, mz = p.z, mRot = p.rot;
+
+    // --- crowd avoidance: marchers flow around the player ---
+    const dx = mx - px, dz = mz - pz;
+    const dist = Math.sqrt(dx*dx + dz*dz);
+    if(dist < MARCH_AVOID_R && dist > 0.01){
+      // Smooth falloff: strongest when closest
+      const strength = 1.0 - (dist / MARCH_AVOID_R);
+      const push = strength * strength * MARCH_AVOID_PUSH;
+      // Push perpendicular to march direction so they sidestep, plus a bit radially
+      const nx = dx / dist, nz = dz / dist;
+      mx += nx * push;
+      mz += nz * push;
+      // Slightly rotate to face around player (subtle)
+      const avoidAngle = Math.atan2(nx, nz);
+      let angleDiff = avoidAngle - mRot;
+      while(angleDiff > PI) angleDiff -= TAU;
+      while(angleDiff < -PI) angleDiff += TAU;
+      mRot += angleDiff * strength * 0.35;
+    }
+
+    // Smooth position so avoidance isn't jerky
+    if(m._prevX === undefined){ m._prevX = mx; m._prevZ = mz; m._prevRot = mRot; }
+    const smooth = 1 - Math.exp(-6.0 * dt);
+    m._prevX += (mx - m._prevX) * smooth;
+    m._prevZ += (mz - m._prevZ) * smooth;
+    let rDiff = mRot - m._prevRot;
+    while(rDiff > PI) rDiff -= TAU;
+    while(rDiff < -PI) rDiff += TAU;
+    m._prevRot += rDiff * smooth;
+
+    m.group.position.x = m._prevX;
+    m.group.position.z = m._prevZ;
+    m.group.rotation.y = m._prevRot;
+
+    const t=performance.now()/1000, ph=m.phase;
+    m.legs.forEach((leg,li)=>{ leg.rotation.x=sin(t*3.2+ph)*m.walkAmp*(li===0?1:-1); });
+    if(!m.hasSign&&!m.hasFist){
+      m.lArm.rotation.x=sin(t*3.2+ph)*0.2;
+      m.rArm.rotation.x=-sin(t*3.2+ph)*0.2;
+    } else if(m.hasSign){ m.lArm.rotation.x=sin(t*3.2+ph)*0.15;
+    } else if(m.hasFist){ m.rArm.rotation.x=-2.9+sin(t*1.5+m.chantPhase)*0.12; }
+    m.group.position.y=sin(t*6.4+ph)*0.015;
+    m.headMesh.rotation.y=sin(t*0.7+m.headTurnPhase)*0.15;
+
+    // When close to player, marchers glance at them
+    if(dist < MARCH_AVOID_R * 1.3){
+      const glance = Math.atan2(px - m._prevX, pz - m._prevZ) - m._prevRot;
+      m.headMesh.rotation.y = clamp(glance, -0.6, 0.6);
+    }
+  });
+}
+
+function registerObstacles(){
+  // Cars (AABBs with padding for rotation/bodywork)
+  obstacles.push({minX:-11.2, maxX:-8.8, minZ:-14.2, maxZ:-9.8, topY:1.55, type:'car'});
+  obstacles.push({minX:-7.2,  maxX:-4.8, minZ:-14.2, maxZ:-9.8, topY:1.55, type:'car'});
+  obstacles.push({minX:6.8,   maxX:9.2,  minZ:9.8,   maxZ:14.2, topY:1.55, type:'car'});
+  obstacles.push({minX:10.8,  maxX:13.2, minZ:9.8,   maxZ:14.2, topY:1.55, type:'car'});
+  // Benches (seat top at y≈0.55)
+  obstacles.push({minX:6.0, maxX:8.0, minZ:4.75, maxZ:5.25, topY:0.55, type:'bench'});
+  obstacles.push({minX:-8.0, maxX:-6.0, minZ:-5.25, maxZ:-4.75, topY:0.55, type:'bench'});
+
+  // Breakfast station — tables (two side by side)
+  const cx = BFP.cx, cz = BFP.cz;
+  obstacles.push({minX:cx-1.8, maxX:cx+1.8, minZ:cz-0.55, maxZ:cz+0.55, topY:0.82, type:'table'});
+  // Backboard / poster wall
+  obstacles.push({minX:cx-2.1, maxX:cx+2.1, minZ:cz-1.0, maxZ:cz-0.7, topY:3.0, type:'wall'});
+  // Canopy support poles are thin — skip those
+
+  // Community building (children walk into this)
+  // bldgX=15.5, bldgW=4, bldgD=5 → x:[13.5,17.5], z:[cz-2.5, cz+2.5]
+  obstacles.push({minX:13.5, maxX:17.5, minZ:BFP.cz-2.5, maxZ:BFP.cz+2.5, topY:5.0, type:'wall'});
 }
 
 // ═══════════════════════════════════
@@ -1209,45 +2501,45 @@ function animatePlayer(model, dt){
 }
 
 // ═══════════════════════════════════
-//  CAMERA SYSTEM (Third-person GTA-style)
+//  CAMERA SYSTEM (Third-person, mouse-orbit)
 // ═══════════════════════════════════
+let camSmoothPos = null; // lazy init
+
 function updateCamera(dt){
-  // Camera follows behind the player's facing direction.
-  // Mouse offsets the view temporarily, but it springs back.
-  const sensitivity = 0.003;
-  const mouseOffsetX = mouseDX * sensitivity;
-  const mouseOffsetY = mouseDY * sensitivity;
+  // Mouse sensitivity
+  const sensitivity = 0.0025;
+
+  // Mouse directly controls orbit angles (no auto-follow fighting input)
+  camYaw   -= mouseDX * sensitivity;
+  camPitch  = clamp(camPitch - mouseDY * sensitivity, -0.3, 1.1);
   mouseDX = 0;
   mouseDY = 0;
 
-  // Target camYaw = behind the player (playerYaw + PI)
-  let targetCamYaw = playerYaw + PI;
+  // Look-at target: player chest
+  const lookTarget = new Vector3(
+    playerPos.x,
+    playerPos.y + PLAYER_HEIGHT * 0.6,
+    playerPos.z
+  );
 
-  // Allow mouse to offset, but smoothly return
-  camYaw -= mouseOffsetX;
+  // Desired camera position: orbit behind player
+  const desiredX = lookTarget.x + camDist * sin(camYaw) * cos(camPitch);
+  const desiredY = lookTarget.y + camDist * sin(camPitch) + 0.5;
+  const desiredZ = lookTarget.z + camDist * cos(camYaw) * cos(camPitch);
 
-  // Smooth yaw follow — damped spring that slows down on big angle diffs
-  let yawDiff = targetCamYaw - camYaw;
-  while(yawDiff > PI) yawDiff -= TAU;
-  while(yawDiff < -PI) yawDiff += TAU;
-  // Use a soft exponential ease: large diffs → slow proportional catch-up
-  const yawSpeed = 1.8;  // lower = smoother/slower follow
-  camYaw += yawDiff * (1 - Math.exp(-yawSpeed * dt));
+  // Clamp camera above ground
+  const minCamY = 0.4;
+  const dy = Math.max(desiredY, minCamY);
 
-  camPitch = clamp(camPitch - mouseOffsetY, -0.4, 1.2);
+  const desired = new Vector3(desiredX, dy, desiredZ);
 
-  // Camera position: smooth follow with damped lerp
-  const target = new Vector3().copy(playerPos);
-  target.y += PLAYER_HEIGHT * 0.65; // look at chest height
+  // Smooth position with frame-rate-independent exponential damping
+  if(!camSmoothPos) camSmoothPos = desired.clone();
+  const smoothFactor = 1 - Math.exp(-8.0 * dt); // higher = snappier
+  camSmoothPos.lerp(desired, smoothFactor);
 
-  const cx = target.x + camDist * sin(camYaw) * cos(camPitch);
-  const cy = target.y + camDist * sin(camPitch);
-  const cz = target.z + camDist * cos(camYaw) * cos(camPitch);
-
-  // Exponential smoothing for position (frame-rate independent)
-  const posSmooth = 1 - Math.exp(-4.5 * dt);
-  camera.position.lerp(new Vector3(cx, cy, cz), posSmooth);
-  camera.lookAt(target);
+  camera.position.copy(camSmoothPos);
+  camera.lookAt(lookTarget);
 }
 
 // ═══════════════════════════════════
@@ -1286,7 +2578,8 @@ function startGame(){
   reset();
   state = 'freeroam';
   $centerMsg.style.display = 'none';
-  ['scorePanel','flowPanel','composure','accuracy','diffLabel','timer'].forEach(
+  document.getElementById('menuBtn').style.display = 'block';
+  ['scorePanel','diffLabel'].forEach(
     id => document.getElementById(id).style.display=''
   );
   $diffLabel.textContent = diff.label.toUpperCase()+' · '+diff.bpm+' BPM';
@@ -1301,9 +2594,28 @@ function startTangle(){
   tangleProg = 0;
   tangleWait = 0;
   state = 'tangled';
+  playerVelY = 0;
+  playerPos.y = 0;
+  playerAirborne = false;
   sfx('tangle');
   sfx('miss');
-  composure = Math.max(0, composure-30);
+  combo = 0;
+}
+
+function resetFromTangle(){
+  tangled = false;
+  tangleProg = 0;
+  tangleWait = 0;
+  rAngle = 0;
+  rSpeed = PI * diff.bpm / 60;
+  graceBeats = GRACE_COUNT;
+  jumpedBeat = false;
+  state = 'freeroam';
+  insideRopes = false;
+  jdg = ''; jdgTimer = 0;
+  $prompt.style.display = '';
+  $prompt.textContent = 'Walk back to the rope zone to try again!';
+  setTimeout(() => { $prompt.style.display = 'none'; }, 3000);
 }
 
 function judgeJump(){
@@ -1379,7 +2691,7 @@ function showScoreScreen(){
     <div class="keys" style="margin-top:20px">Press ENTER to return to menu</div>
   `;
   $centerMsg.style.display = '';
-  ['scorePanel','flowPanel','composure','accuracy','diffLabel','timer','prompt'].forEach(
+  ['scorePanel','diffLabel','timer','prompt'].forEach(
     id => { const el=document.getElementById(id); if(el) el.style.display='none'; }
   );
 }
@@ -1387,44 +2699,21 @@ function showScoreScreen(){
 function showMenu(){
   state = 'menu';
   $centerMsg.innerHTML = `
-    <h1>DOUBLE DUTCH 3D</h1>
-    <div class="sub">Third-Person Rhythm &amp; Rope Simulator</div>
-    <div class="diff-row">
-      <span class="diff-arrow" id="diffLeft">◀</span>
-      <span class="diff-label" id="diffDisplay">${diff.label.toUpperCase()} · ${diff.bpm} BPM</span>
-      <span class="diff-arrow" id="diffRight">▶</span>
-    </div>
+    <h1>BLACK JOY</h1>
+    <div class="sub">Explore how Black Americans have shaped culture through rhythm and movement</div>
     <div class="keys">
       WASD / Arrows — Move &nbsp;|&nbsp; SPACE — Jump &nbsp;|&nbsp; Mouse — Look<br>
-      Click arrows or ↑↓ to change difficulty &nbsp;|&nbsp; ENTER — Start
+      ENTER — Start
     </div>
   `;
-  bindDiffArrows();
   $centerMsg.style.display = '';
   $prompt.style.display = 'none';
-  ['scorePanel','flowPanel','composure','accuracy','diffLabel','timer'].forEach(
+  ['scorePanel','diffLabel'].forEach(
     id => document.getElementById(id).style.display='none'
   );
 }
 
-function updateDiffDisplay(){
-  const dd = document.getElementById('diffDisplay');
-  if(dd) dd.textContent = diff.label.toUpperCase() + ' \u00b7 ' + diff.bpm + ' BPM';
-}
 
-function changeDiff(delta){
-  dIdx = clamp(dIdx + delta, 0, DIFFS.length - 1);
-  diff = DIFFS[dIdx];
-  updateDiffDisplay();
-  initAudio();
-}
-
-function bindDiffArrows(){
-  const leftBtn = document.getElementById('diffLeft');
-  const rightBtn = document.getElementById('diffRight');
-  if(leftBtn) leftBtn.addEventListener('click', e => { e.stopPropagation(); changeDiff(-1); });
-  if(rightBtn) rightBtn.addEventListener('click', e => { e.stopPropagation(); changeDiff(1); });
-}
 
 // ═══════════════════════════════════
 //  UPDATE LOOP
@@ -1439,17 +2728,22 @@ function update(dt){
     if(jdg==='PERFECT') $judgment.style.color = '#FFD700';
     else if(jdg==='GOOD') $judgment.style.color = '#2ECC71';
     else $judgment.style.color = '#E74C3C';
-    $judgment.textContent = jdg;
+    $judgment.textContent = combo > 1 ? jdg + '  ' + combo + 'x' : jdg;
   } else {
     $judgment.style.opacity = 0;
   }
   beatFlash = Math.max(0, beatFlash - dt);
 
+  // ESC to return to menu from any gameplay state
+  if(pressed('Escape') && state !== 'menu'){
+    if(document.pointerLockElement) document.exitPointerLock();
+    showMenu();
+    return;
+  }
+
   // ── MENU ──
   if(state === 'menu'){
-    // Difficulty selection (keyboard)
-    if(pressed('ArrowUp'))   changeDiff(1);
-    if(pressed('ArrowDown')) changeDiff(-1);
+    document.getElementById('menuBtn').style.display = 'none';
     if(pressed('Enter') || pressed('Space')){
       renderer.domElement.requestPointerLock();
       startGame();
@@ -1499,11 +2793,11 @@ function update(dt){
   // ── TANGLED ──
   if(state === 'tangled'){
     gTime += dt; totalTime = gTime;
-    tangleProg = Math.min(1, tangleProg + dt*1.2);
-    rSpeed = lerp(rSpeed, 0, 0.06);
+    tangleProg = Math.min(1, tangleProg + dt * 0.8);
+    rSpeed = lerp(rSpeed, 0, 0.08);
     rAngle += rSpeed * dt;
 
-    // Update ropes with tangle
+    // Ropes droop to ground
     ropeAngle1 = rAngle;
     ropeAngle2 = rAngle + PI;
     const ep1L = getRopeEndpoint(ropeAngle1);
@@ -1515,21 +2809,72 @@ function update(dt){
     rope2.applyTangle(tangleProg);
     rope2.updateVisual();
 
-    // Player stumble animation
-    jumperLean = lerp(jumperLean, 0.15, dt*2);
-    if(playerModel){
-      playerModel.rotation.z = jumperLean;
-      playerModel.rotation.x = sin(gTime*3)*0.05*tangleProg;
+    // Player stumble briefly, then allow movement
+    if(tangleProg < 0.5){
+      jumperLean = lerp(jumperLean, 0.15, dt*2);
+      if(playerModel){
+        playerModel.rotation.z = jumperLean;
+        playerModel.rotation.x = sin(gTime*3)*0.05*tangleProg;
+      }
+    } else {
+      jumperLean = lerp(jumperLean, 0, dt*4);
     }
 
-    if(pressed('Space')){ showScoreScreen(); return; }
-    if(tangleProg >= 1){
-      tangleWait += dt;
-      if(tangleWait > 2){ showScoreScreen(); }
+    // Allow player movement during tangle (same as freeroam)
+    let inputFwd = 0, inputRight = 0;
+    if(keys['KeyW'] || keys['ArrowUp'])    inputFwd  += 1;
+    if(keys['KeyS'] || keys['ArrowDown'])  inputFwd  -= 1;
+    if(keys['KeyA'] || keys['ArrowLeft'])  inputRight += 1;
+    if(keys['KeyD'] || keys['ArrowRight']) inputRight -= 1;
+    const inputLen = Math.sqrt(inputFwd*inputFwd + inputRight*inputRight);
+    if(inputLen > 0.01){
+      const nFwd = inputFwd / inputLen;
+      const nRight = inputRight / inputLen;
+      const fwdX = -sin(camYaw), fwdZ = -cos(camYaw);
+      const rgtX = fwdZ, rgtZ = -fwdX;
+      const worldX = nFwd * fwdX + nRight * rgtX;
+      const worldZ = nFwd * fwdZ + nRight * rgtZ;
+      playerVelX += worldX * PLAYER_ACCEL * dt;
+      playerVelZ += worldZ * PLAYER_ACCEL * dt;
+    } else {
+      playerVelX -= playerVelX * PLAYER_FRICTION * dt;
+      playerVelZ -= playerVelZ * PLAYER_FRICTION * dt;
+    }
+    const tHSpeed = Math.sqrt(playerVelX*playerVelX + playerVelZ*playerVelZ);
+    if(tHSpeed > PLAYER_SPEED){ playerVelX *= PLAYER_SPEED/tHSpeed; playerVelZ *= PLAYER_SPEED/tHSpeed; }
+    playerPos.x += playerVelX * dt;
+    playerPos.z += playerVelZ * dt;
+    if(tHSpeed > 0.3){
+      const targetYaw = Math.atan2(playerVelX, playerVelZ);
+      let diff2 = targetYaw - playerYaw;
+      while(diff2 > PI) diff2 -= TAU;
+      while(diff2 < -PI) diff2 += TAU;
+      playerYaw += diff2 * Math.min(1, dt * 10);
+    }
+    playerPos.x = clamp(playerPos.x, -28, 28);
+    playerPos.z = clamp(playerPos.z, -28, 28);
+    playerVelY += GRAVITY * dt;
+    playerPos.y += playerVelY * dt;
+    if(playerPos.y <= 0){ playerPos.y = 0; playerVelY = 0; playerAirborne = false; }
+
+    playerModel.position.copy(playerPos);
+    playerModel.rotation.y = playerYaw;
+    animatePlayer(playerModel, dt);
+
+    // When player walks out of rope zone, reset
+    const stillInZone = (Math.abs(playerPos.x) < TURNER_DIST * 0.9) && (Math.abs(playerPos.z) < 1.5);
+    if(!stillInZone && tangleProg >= 0.5){
+      resetFromTangle();
     }
 
     updateCamera(dt);
     tickParticles(dt);
+    animateMarch(dt);
+    animateBreakfast(dt);
+
+    // HUD updates
+    $score.textContent = score;
+    $combo.textContent = '';
     return;
   }
 
@@ -1584,9 +2929,35 @@ function update(dt){
     playerYaw += diff2 * Math.min(1, dt * 10);
   }
 
-  // Clamp to play area
-  playerPos.x = clamp(playerPos.x, -20, 20);
-  playerPos.z = clamp(playerPos.z, -20, 20);
+  // Clamp to play area (extends into protest streets)
+  playerPos.x = clamp(playerPos.x, -28, 28);
+  playerPos.z = clamp(playerPos.z, -28, 28);
+
+  // Object collision (cars, benches)
+  for(const obs of obstacles){
+    // Skip bench tops when player is above — allows landing on them
+    if(obs.type === 'bench' && playerPos.y >= obs.topY - 0.1) continue;
+    // AABB vs circle
+    const closestX = clamp(playerPos.x, obs.minX, obs.maxX);
+    const closestZ = clamp(playerPos.z, obs.minZ, obs.maxZ);
+    const dx = playerPos.x - closestX;
+    const dz = playerPos.z - closestZ;
+    const dist = Math.sqrt(dx*dx + dz*dz);
+    if(dist < PLAYER_RADIUS){
+      if(dist > 0.001){
+        const push = PLAYER_RADIUS - dist;
+        playerPos.x += (dx / dist) * push;
+        playerPos.z += (dz / dist) * push;
+      } else {
+        playerPos.x += PLAYER_RADIUS;
+      }
+      // Kill velocity into obstacle
+      const nx = dx / (dist > 0.001 ? dist : 1);
+      const nz = dz / (dist > 0.001 ? dist : 1);
+      const vDotN = playerVelX * nx + playerVelZ * nz;
+      if(vDotN < 0){ playerVelX -= vDotN * nx; playerVelZ -= vDotN * nz; }
+    }
+  }
 
   // Jump / gravity
   if(!playerAirborne && (pressed('Space') || (keys['Space'] && insideRopes))){
@@ -1604,8 +2975,19 @@ function update(dt){
   playerVelY += GRAVITY * dt;
   playerPos.y += playerVelY * dt;
 
-  if(playerPos.y <= 0){
-    playerPos.y = 0;
+  // Compute effective ground (bench platforms)
+  let groundLevel = 0;
+  for(const obs of obstacles){
+    if(obs.type === 'bench' &&
+       playerPos.x >= obs.minX - 0.15 && playerPos.x <= obs.maxX + 0.15 &&
+       playerPos.z >= obs.minZ - 0.15 && playerPos.z <= obs.maxZ + 0.15 &&
+       playerPos.y >= obs.topY - 0.15){
+      groundLevel = Math.max(groundLevel, obs.topY);
+    }
+  }
+
+  if(playerPos.y <= groundLevel){
+    playerPos.y = groundLevel;
     if(playerAirborne){
       playerAirborne = false;
       sfx('land');
@@ -1650,32 +3032,37 @@ function update(dt){
     jumpedBeat = false;
   }
 
-  // Rope collision check (when jumping inside) — forgiving thresholds
-  if(insideRopes && state==='jumping' && !tangled){
-    const r1min = rope1.getMinYNearCenter(0.4);
-    const r2min = rope2.getMinYNearCenter(0.4);
-    const feetY = playerPos.y + 0.02;
-
-    // Only trigger if rope is very close to ground AND feet are below rope
-    if((r1min < 0.12 && feetY < r1min + 0.05) || (r2min < 0.12 && feetY < r2min + 0.05)){
-      if(!playerAirborne && graceBeats <= 0){
-        // Standing on the rope = tangle
-        startTangle();
-      }
-    }
-  }
-
-  // Rope shape
+  // Rope shape (compute first, then collision test against actual geometry)
   const ep1L = getRopeEndpoint(ropeAngle1);
   const ep1R = getRopeEndpoint(ropeAngle1);
   rope1.computeShape(ropeAngle1, ep1L.y, ep1L.z, ep1R.y, ep1R.z);
-  if(tangled) rope1.applyTangle(tangleProg);
-  rope1.updateVisual();
 
   const ep2L = getRopeEndpoint(ropeAngle2);
   const ep2R = getRopeEndpoint(ropeAngle2);
   rope2.computeShape(ropeAngle2, ep2L.y, ep2L.z, ep2R.y, ep2R.z);
-  if(tangled) rope2.applyTangle(tangleProg);
+
+  // Physical rope collision — only feet (lower 0.3m) trigger a tangle
+  if(insideRopes && state==='jumping' && !tangled && graceBeats <= 0){
+    const px = playerPos.x, py = playerPos.y, pz = playerPos.z;
+    const FEET_HEIGHT = 0.3; // only check ankle/shoe zone
+    const hit1 = rope1.testPlayerCollision(px, py, pz, PLAYER_BODY_RADIUS, FEET_HEIGHT);
+    const hit2 = rope2.testPlayerCollision(px, py, pz, PLAYER_BODY_RADIUS, FEET_HEIGHT);
+    const hit = hit1 && hit2 ? (hit1.depth >= hit2.depth ? hit1 : hit2) : (hit1 || hit2);
+    const hitRope = hit === hit1 ? rope1 : rope2;
+
+    if(hit){
+      // Push rope visually at contact point (bend effect)
+      const cp = hit.contactPt;
+      const dx = cp.x - px;
+      const dz = cp.z - pz;
+      const dnorm = Math.sqrt(dx*dx + dz*dz) || 1;
+      hitRope.applyContactBend(hit.segIdx, hit.t, -dx/dnorm * 0.15, -dz/dnorm * 0.15, 1.0);
+      startTangle();
+    }
+  }
+
+  if(tangled){ rope1.applyTangle(tangleProg); rope2.applyTangle(tangleProg); }
+  rope1.updateVisual();
   rope2.updateVisual();
 
   // Turner anim
@@ -1692,18 +3079,48 @@ function update(dt){
   playerModel.rotation.z = jumperLean;
 
   animatePlayer(playerModel, dt);
+  // Jazz performer sway animation (tempo-synced) + music note particles
+  const jazzBPM = currentJazzBPM || 80;
+  const swaySpeed = PI * jazzBPM / 60;
+  jazzPerformers.forEach(jp => {
+    jp.time += dt;
+    jp.group.rotation.z = sin(jp.time * swaySpeed) * 0.04;
+    jp.group.position.y = sin(jp.time * swaySpeed * 0.5) * 0.02;
+    // Emit music notes from instruments
+    if(jazzPlaying){
+      jp.noteTimer -= dt;
+      if(jp.noteTimer <= 0){
+        jp.noteTimer = rand(0.6, 1.8);
+        const off = jp.noteOff;
+        const wPos = new THREE.Vector3(off.x, off.y, off.z);
+        jp.group.localToWorld(wPos);
+        emitMusicNote(wPos);
+      }
+    }
+  });
+  tickMusicNotes(dt);
+  animateMarch(dt);
+  animateBreakfast(dt);
+  // Proximity-based jazz volume (inverse square law outside small radius)
+  if(jazzAudio){
+    const pcx = -1.5, pcz = -9.55;
+    const ddx = playerPos.x - pcx, ddz = playerPos.z - pcz;
+    const pDist = Math.sqrt(ddx*ddx + ddz*ddz);
+    const hearR = 0.9;
+    let vol;
+    if(pDist <= hearR){
+      vol = 0.6;
+    } else {
+      vol = 0.6 * (hearR * hearR) / (pDist * pDist);
+    }
+    jazzAudio.volume = clamp(vol, 0.0, 0.6);
+  }
   updateCamera(dt);
   tickParticles(dt);
 
   // HUD updates
   $score.textContent = score;
   $combo.textContent = combo > 1 ? combo + 'x COMBO' : '';
-  $jumps.textContent = totalJ;
-  $flowFill.style.width = flow + '%';
-  $compFill.style.width = composure + '%';
-  $accFill.style.width = accuracy + '%';
-  const m = floor(gTime/60), s = floor(gTime%60);
-  $timer.textContent = m + ':' + (s<10?'0':'') + s;
 }
 
 // ═══════════════════════════════════
@@ -1728,10 +3145,21 @@ function gameLoop(time){
 //  INIT
 // ═══════════════════════════════════
 buildEnvironment();
+buildDistantStreet();
+buildMarchGroup();
 buildSpectators();
+buildJazzPerformers();
+buildBreakfastProgram();
+registerObstacles();
 initGameObjects();
 showMenu();
-bindDiffArrows();
+
+document.getElementById('menuBtn').addEventListener('click', () => {
+  if(state !== 'menu'){
+    if(document.pointerLockElement) document.exitPointerLock();
+    showMenu();
+  }
+});
 
 requestAnimationFrame(gameLoop);
 
