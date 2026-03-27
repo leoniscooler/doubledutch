@@ -142,6 +142,10 @@ document.addEventListener('keydown', e => {
   keys[e.code]=true;
   initAudio();
   if(e.code==='Space'||e.code.startsWith('Arrow')) e.preventDefault();
+  // Re-lock pointer on Space if not in menu
+  if(e.code === 'Space' && state !== 'menu' && !document.pointerLockElement){
+    renderer.domElement.requestPointerLock().catch(()=>{});
+  }
 });
 document.addEventListener('keyup', e => { keys[e.code]=false; });
 document.addEventListener('mousemove', e => {
@@ -152,6 +156,14 @@ document.addEventListener('mousemove', e => {
 });
 document.addEventListener('pointerlockchange', () => {
   pointerLocked = !!document.pointerLockElement;
+  // Auto-relock if lost outside menu (e.g. browser released it)
+  if(!pointerLocked && state !== 'menu'){
+    setTimeout(() => {
+      if(state !== 'menu' && !document.pointerLockElement){
+        renderer.domElement.requestPointerLock().catch(()=>{});
+      }
+    }, 300);
+  }
 });
 
 function pressed(c){ return jp[c]===true; }
@@ -243,6 +255,282 @@ function startAmbience(){
   if(ambientInterval) return;
   ambientInterval = setInterval(() => { if(actx) sfx('ambient',.3); }, 3000);
   startJazz();
+  startAreaSounds();
+}
+
+// ═══════════════════════════════════
+//  AREA AMBIENT SOUNDS (synthesized)
+// ═══════════════════════════════════
+// Each area gets a looping synthesized soundscape with proximity volume
+const areaSounds = {};
+
+function startAreaSounds(){
+  if(!actx) return;
+  if(areaSounds.started) return;
+  areaSounds.started = true;
+
+  // ── PROTEST MARCH: rhythmic drum beat + crowd murmur ──
+  const protestGain = actx.createGain();
+  protestGain.gain.value = 0;
+  protestGain.connect(actx.destination);
+
+  // Bass drum beat (synth kick on interval)
+  const protestDrumGain = actx.createGain();
+  protestDrumGain.gain.value = 1;
+  protestDrumGain.connect(protestGain);
+
+  function protestDrumBeat(){
+    if(!actx || actx.state !== 'running') return;
+    const t = actx.currentTime;
+    // Kick
+    const o = actx.createOscillator();
+    o.frequency.setValueAtTime(120, t);
+    o.frequency.exponentialRampToValueAtTime(40, t + 0.15);
+    const kg = actx.createGain();
+    kg.gain.setValueAtTime(0.4, t);
+    kg.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+    o.connect(kg); kg.connect(protestDrumGain);
+    o.start(t); o.stop(t + 0.2);
+    // Snare on off-beat
+    setTimeout(() => {
+      if(!actx || actx.state !== 'running') return;
+      const t2 = actx.currentTime;
+      const sr = actx.sampleRate, n = (sr * 0.06)|0;
+      const buf = actx.createBuffer(1, n, sr);
+      const d = buf.getChannelData(0);
+      for(let i = 0; i < n; i++) d[i] = (Math.random()*2-1) * Math.exp(-i/(sr*0.015));
+      const s = actx.createBufferSource(); s.buffer = buf;
+      const sg = actx.createGain();
+      sg.gain.setValueAtTime(0.15, t2);
+      sg.gain.exponentialRampToValueAtTime(0.001, t2 + 0.08);
+      s.connect(sg); sg.connect(protestDrumGain);
+      s.start(t2);
+    }, 350);
+  }
+  areaSounds.protestBeatId = setInterval(protestDrumBeat, 700);
+
+  // Crowd murmur (filtered noise loop)
+  const murmurLen = 2;
+  const sr = actx.sampleRate;
+  const murmurBuf = actx.createBuffer(1, sr * murmurLen, sr);
+  const md = murmurBuf.getChannelData(0);
+  for(let i = 0; i < md.length; i++){
+    md[i] = (Math.random()*2-1) * 0.15;
+    // Slow amplitude modulation for "chanting" feel
+    md[i] *= 0.5 + 0.5 * Math.sin(i / sr * 3.0 * Math.PI);
+  }
+  const murmurSrc = actx.createBufferSource();
+  murmurSrc.buffer = murmurBuf;
+  murmurSrc.loop = true;
+  const murmurFilter = actx.createBiquadFilter();
+  murmurFilter.type = 'bandpass';
+  murmurFilter.frequency.value = 350;
+  murmurFilter.Q.value = 1.5;
+  const murmurGain = actx.createGain();
+  murmurGain.gain.value = 0.5;
+  murmurSrc.connect(murmurFilter);
+  murmurFilter.connect(murmurGain);
+  murmurGain.connect(protestGain);
+  murmurSrc.start();
+
+  areaSounds.protest = { gain: protestGain, src: murmurSrc };
+
+  // ── BREAKFAST STATION: sizzle/clatter + voices ──
+  const bfpGain = actx.createGain();
+  bfpGain.gain.value = 0;
+  bfpGain.connect(actx.destination);
+
+  // Sizzle (continuous filtered noise, like a griddle)
+  const sizzleLen = 1.5;
+  const sizzleBuf = actx.createBuffer(1, sr * sizzleLen, sr);
+  const sd = sizzleBuf.getChannelData(0);
+  for(let i = 0; i < sd.length; i++){
+    sd[i] = (Math.random()*2-1) * 0.12;
+  }
+  const sizzleSrc = actx.createBufferSource();
+  sizzleSrc.buffer = sizzleBuf;
+  sizzleSrc.loop = true;
+  const sizzleFilter = actx.createBiquadFilter();
+  sizzleFilter.type = 'highpass';
+  sizzleFilter.frequency.value = 3000;
+  const sizzleGain = actx.createGain();
+  sizzleGain.gain.value = 0.5;
+  sizzleSrc.connect(sizzleFilter);
+  sizzleFilter.connect(sizzleGain);
+  sizzleGain.connect(bfpGain);
+  sizzleSrc.start();
+
+  // Intermittent clatter (plate/utensil clink)
+  function bfpClatter(){
+    if(!actx || actx.state !== 'running') return;
+    const t = actx.currentTime;
+    const freq = 800 + Math.random() * 1500;
+    const o = actx.createOscillator();
+    o.type = 'sine';
+    o.frequency.value = freq;
+    const cg = actx.createGain();
+    cg.gain.setValueAtTime(0.12, t);
+    cg.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+    o.connect(cg); cg.connect(bfpGain);
+    o.start(t); o.stop(t + 0.07);
+  }
+  areaSounds.bfpClatterId = setInterval(bfpClatter, 1200 + Math.random() * 800);
+
+  areaSounds.breakfast = { gain: bfpGain, src: sizzleSrc };
+
+  // ── HOPSCOTCH: intermittent foot-pat + child giggle synth ──
+  const hopsGain = actx.createGain();
+  hopsGain.gain.value = 0;
+  hopsGain.connect(actx.destination);
+
+  function hopsFootPat(){
+    if(!actx || actx.state !== 'running') return;
+    const t = actx.currentTime;
+    // Soft foot thud
+    const o = actx.createOscillator();
+    o.frequency.setValueAtTime(90, t);
+    o.frequency.exponentialRampToValueAtTime(50, t + 0.08);
+    const fg = actx.createGain();
+    fg.gain.setValueAtTime(0.2, t);
+    fg.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+    o.connect(fg); fg.connect(hopsGain);
+    o.start(t); o.stop(t + 0.1);
+    // Pat slap
+    const n2 = (sr * 0.04)|0;
+    const patBuf = actx.createBuffer(1, n2, sr);
+    const pd = patBuf.getChannelData(0);
+    for(let i = 0; i < n2; i++) pd[i] = (Math.random()*2-1) * Math.exp(-i/(sr*0.008));
+    const ps = actx.createBufferSource(); ps.buffer = patBuf;
+    const pf = actx.createBiquadFilter(); pf.type = 'lowpass'; pf.frequency.value = 400;
+    const pg = actx.createGain(); pg.gain.value = 0.15;
+    ps.connect(pf); pf.connect(pg); pg.connect(hopsGain);
+    ps.start(t);
+  }
+  areaSounds.hopsPatId = setInterval(hopsFootPat, 600 + Math.random() * 300);
+
+  // Child giggle synth (quick rising tones)
+  function hopsGiggle(){
+    if(!actx || actx.state !== 'running') return;
+    const t = actx.currentTime;
+    const baseFreq = 500 + Math.random() * 200;
+    for(let i = 0; i < 3; i++){
+      const o = actx.createOscillator();
+      o.type = 'triangle';
+      o.frequency.setValueAtTime(baseFreq + i * 80, t + i * 0.07);
+      o.frequency.exponentialRampToValueAtTime(baseFreq + i * 80 + 120, t + i * 0.07 + 0.05);
+      const gg = actx.createGain();
+      gg.gain.setValueAtTime(0.06, t + i * 0.07);
+      gg.gain.exponentialRampToValueAtTime(0.001, t + i * 0.07 + 0.08);
+      o.connect(gg); gg.connect(hopsGain);
+      o.start(t + i * 0.07); o.stop(t + i * 0.07 + 0.08);
+    }
+  }
+  areaSounds.hopsGiggleId = setInterval(hopsGiggle, 3000 + Math.random() * 2000);
+
+  areaSounds.hopscotch = { gain: hopsGain };
+
+  // ── MARBLES: glass clinking + rolling ──
+  const marbGain = actx.createGain();
+  marbGain.gain.value = 0;
+  marbGain.connect(actx.destination);
+
+  // Glass clink (high-pitched short sine burst)
+  function marbleClink(){
+    if(!actx || actx.state !== 'running') return;
+    const t = actx.currentTime;
+    const freq = 2000 + Math.random() * 2000;
+    const o = actx.createOscillator();
+    o.type = 'sine';
+    o.frequency.value = freq;
+    const cg = actx.createGain();
+    cg.gain.setValueAtTime(0.12, t);
+    cg.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+    o.connect(cg); cg.connect(marbGain);
+    o.start(t); o.stop(t + 0.06);
+    // Second harmonic for glass-like ring
+    const o2 = actx.createOscillator();
+    o2.type = 'sine';
+    o2.frequency.value = freq * 2.3;
+    const cg2 = actx.createGain();
+    cg2.gain.setValueAtTime(0.05, t);
+    cg2.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+    o2.connect(cg2); cg2.connect(marbGain);
+    o2.start(t); o2.stop(t + 0.09);
+  }
+  areaSounds.marbClinkId = setInterval(marbleClink, 1800 + Math.random() * 1200);
+
+  // Rolling rumble (low filtered noise loop)
+  const rollLen = 1;
+  const rollBuf = actx.createBuffer(1, sr * rollLen, sr);
+  const rd = rollBuf.getChannelData(0);
+  for(let i = 0; i < rd.length; i++){
+    rd[i] = (Math.random()*2-1) * 0.06;
+  }
+  const rollSrc = actx.createBufferSource();
+  rollSrc.buffer = rollBuf;
+  rollSrc.loop = true;
+  const rollFilter = actx.createBiquadFilter();
+  rollFilter.type = 'bandpass';
+  rollFilter.frequency.value = 200;
+  rollFilter.Q.value = 2;
+  const rollGain = actx.createGain();
+  rollGain.gain.value = 0.4;
+  rollSrc.connect(rollFilter);
+  rollFilter.connect(rollGain);
+  rollGain.connect(marbGain);
+  rollSrc.start();
+
+  areaSounds.marbles = { gain: marbGain, src: rollSrc };
+}
+
+function updateAreaSoundVolumes(){
+  if(!areaSounds.started) return;
+  const px = playerPos.x, pz = playerPos.z;
+  const hearR = 1.5; // close-up radius before falloff
+
+  // Helper: proximity volume from a point
+  function proxVol(cx, cz, maxVol){
+    const dx = px - cx, dz = pz - cz;
+    const d = Math.sqrt(dx*dx + dz*dz);
+    if(d <= hearR) return maxVol;
+    return maxVol * (hearR * hearR) / (d * d);
+  }
+
+  // Protest — distance to nearest point on march perimeter rectangle
+  if(areaSounds.protest){
+    const D = 22; // MARCH_DIST
+    const cx = clamp(px, -D, D);
+    const cz = clamp(pz, -D, D);
+    // Nearest point on the perimeter of the rectangle
+    let nearX, nearZ;
+    const dLeft = Math.abs(px - (-D)), dRight = Math.abs(px - D);
+    const dBottom = Math.abs(pz - (-D)), dTop = Math.abs(pz - D);
+    const minEdge = Math.min(dLeft, dRight, dBottom, dTop);
+    if(minEdge === dLeft)      { nearX = -D; nearZ = clamp(pz, -D, D); }
+    else if(minEdge === dRight){ nearX = D;  nearZ = clamp(pz, -D, D); }
+    else if(minEdge === dBottom){ nearX = clamp(px, -D, D); nearZ = -D; }
+    else                       { nearX = clamp(px, -D, D); nearZ = D; }
+    const v = proxVol(nearX, nearZ, 0.35);
+    areaSounds.protest.gain.gain.value = clamp(v, 0, 0.35);
+  }
+
+  // Breakfast station
+  if(areaSounds.breakfast){
+    const v = proxVol(10, -3, 0.25);
+    areaSounds.breakfast.gain.gain.value = clamp(v, 0, 0.25);
+  }
+
+  // Hopscotch
+  if(areaSounds.hopscotch){
+    const v = proxVol(-8, 6, 0.2);
+    areaSounds.hopscotch.gain.gain.value = clamp(v, 0, 0.2);
+  }
+
+  // Marbles
+  if(areaSounds.marbles){
+    const v = proxVol(-4, 9, 0.2);
+    areaSounds.marbles.gain.gain.value = clamp(v, 0, 0.2);
+  }
 }
 
 // ═══════════════════════════════════
@@ -253,10 +541,8 @@ let jazzAudio = null;
 let jazzTrackIdx = 0;
 let currentJazzBPM = 80;
 
-// 5 classic Louis Armstrong tracks from the Internet Archive
+// 4 classic Louis Armstrong tracks from the Internet Archive
 const JAZZ_TRACKS = [
-  { title: 'What a Wonderful World', bpm: 70,
-    url: 'https://archive.org/download/WhatAWonderfulWorld_59/Oldies50s-LouisArmstrong-whatAWonderfulWorld.mp3' },
   { title: 'When the Saints Go Marching In', bpm: 110,
     url: 'https://archive.org/download/78_2442-When-the-saints-go-marching-in/2442-When-the-saints-go-marching-in.mp3' },
   { title: 'Dream a Little Dream of Me', bpm: 75,
@@ -319,6 +605,14 @@ document.addEventListener('visibilitychange', () => {
   } else {
     if(actx && actx.state === 'suspended') actx.resume();
     if(jazzAudio && jazzPlaying) jazzAudio.play().catch(()=>{});
+    // Re-lock pointer when returning to tab (unless in menu)
+    if(state !== 'menu' && !document.pointerLockElement){
+      setTimeout(() => {
+        if(state !== 'menu' && !document.pointerLockElement){
+          renderer.domElement.requestPointerLock().catch(()=>{});
+        }
+      }, 200);
+    }
   }
 });
 
@@ -760,8 +1054,8 @@ function buildCharacterModel(skinMat, shirtMat, pantsMat, hairMat, isGirl=false)
   // Hair
   if(isGirl){
     // Long hair flowing down
-    const hairTop = new THREE.Mesh(new THREE.SphereGeometry(0.19, 12, 8, 0, TAU, 0, PI*0.6), hairMat);
-    hairTop.position.y = 0.04;
+    const hairTop = new THREE.Mesh(new THREE.SphereGeometry(0.19, 12, 8, 0, TAU, 0, PI*0.42), hairMat);
+    hairTop.position.set(0, 0.06, -0.03);
     head.add(hairTop);
     // Hair flowing down back
     const hairBack = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.08, 0.5, 8), hairMat);
@@ -784,10 +1078,10 @@ function buildCharacterModel(skinMat, shirtMat, pantsMat, hairMat, isGirl=false)
   } else {
     // Short hair (cap)
     const hairMesh = new THREE.Mesh(
-      new THREE.SphereGeometry(0.18, 12, 8, 0, TAU, 0, PI*0.55),
+      new THREE.SphereGeometry(0.18, 12, 8, 0, TAU, 0, PI*0.4),
       hairMat
     );
-    hairMesh.position.y = 0.02;
+    hairMesh.position.set(0, 0.04, -0.03);
     head.add(hairMesh);
   }
 
@@ -1150,8 +1444,8 @@ function buildSpectators(){
     headM.castShadow = true;
     g.add(headM);
     // Hair
-    const hairM = new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 6, 0, TAU, 0, PI*0.5), mat(0x1a1008));
-    hairM.position.y = 1.68;
+    const hairM = new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 6, 0, TAU, 0, PI*0.4), mat(0x1a1008));
+    hairM.position.set(0, 1.72, -0.03);
     g.add(hairM);
     // Shoes
     [-0.08, 0.08].forEach(sx => {
@@ -1177,6 +1471,7 @@ function buildJazzPerformers(){
     {x:-3.5,z:-9,    inst:'sax',     skin:0x8B5A2B, shirt:0xB8860B, hat:true},
     {x:-1,  z:-10.5, inst:'bass',    skin:0xA0704C, shirt:0x2F4F4F, hat:false},
     {x:0.5, z:-9.2,  inst:'drums',   skin:0x7A5535, shirt:0x191970, hat:true},
+    {x:1.8, z:-10,   inst:'singer',  skin:0xB07848, shirt:0x660033, hat:false},
   ];
   // Compute rotation so each musician faces the jump ropes at origin
   musicians.forEach(m => { m.rot = Math.atan2(-m.x, -m.z); });
@@ -1212,11 +1507,19 @@ function buildJazzPerformers(){
       p.position.set(ex,1.62,0.15); g.add(p);
     });
     // Mouth
-    const mouthM = new THREE.Mesh(new THREE.BoxGeometry(0.05,0.012,0.01), mat(0xB87060));
-    mouthM.position.set(0,1.52,0.15); g.add(mouthM);
+    if(m.inst === 'singer'){
+      // Wide open mouth for singing
+      const mouthOuter = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), mat(0x4a2020));
+      mouthOuter.position.set(0, 1.50, 0.14); mouthOuter.scale.set(1, 0.7, 0.5); g.add(mouthOuter);
+      const mouthInner = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 5), mat(0x8B2040));
+      mouthInner.position.set(0, 1.50, 0.15); mouthInner.scale.set(1, 0.6, 0.4); g.add(mouthInner);
+    } else {
+      const mouthM = new THREE.Mesh(new THREE.BoxGeometry(0.05,0.012,0.01), mat(0xB87060));
+      mouthM.position.set(0,1.52,0.15); g.add(mouthM);
+    }
     // Hair
-    const hairM = new THREE.Mesh(new THREE.SphereGeometry(0.16,10,6,0,TAU,0,PI*0.5), mat(0x1a1008));
-    hairM.position.y = 1.63; g.add(hairM);
+    const hairM = new THREE.Mesh(new THREE.SphereGeometry(0.16,10,6,0,TAU,0,PI*0.4), mat(0x1a1008));
+    hairM.position.set(0, 1.67, -0.03); g.add(hairM);
     // Hat (fedora/porkpie for jazz)
     if(m.hat){
       const hatMat = mat(0x2c2c2c);
@@ -1294,6 +1597,16 @@ function buildJazzPerformers(){
       s2.position.set(0.2,1.0,0.35); s2.rotation.set(-0.8,0,-0.3); g.add(s2);
       lArm.rotation.set(-0.8,0,0.3); rArm.rotation.set(-0.8,0,-0.3);
     }
+    if(m.inst==='singer'){
+      // Singer pose: left hand on chest, right arm extended outward
+      lArm.position.set(-0.2, 1.15, 0.15);
+      lArm.rotation.set(-1.0, 0, 0.5);
+      rArm.position.set(0.28, 1.1, 0.05);
+      rArm.rotation.set(-0.3, 0, -0.6);
+      // Dress/long top (singer wears a flowing garment)
+      const dress = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.28, 0.5, 8), shirt);
+      dress.position.set(0, 0.65, 0); g.add(dress);
+    }
 
     // Instrument emit offset in local space (where notes come from)
     let noteOff = {x:0, y:1.4, z:0.3};
@@ -1301,6 +1614,7 @@ function buildJazzPerformers(){
     if(m.inst==='sax')     noteOff = {x:0.05, y:0.9, z:0.35};
     if(m.inst==='bass')    noteOff = {x:0.3, y:1.75, z:0.1};
     if(m.inst==='drums')   noteOff = {x:0, y:1.1, z:0.35};
+    if(m.inst==='singer')   noteOff = {x:0, y:1.6, z:0.2};
 
     g.position.set(m.x, 0, m.z);
     g.rotation.y = m.rot;
@@ -1493,28 +1807,90 @@ function buildBreakfastStation(){
   scene.add(g);
   BFP.stationGroup = g;
 
-  // ── Community building (children walk into this after eating) ──
+  // ── Community building — hollow shell with door opening ──
   const bldgX = 15.5, bldgZ = cz;
   const bldgW = 4, bldgD = 5, bldgH = 5;
+  const wt = 0.15; // wall thickness
   const bldgMat = mat(0x6B3A2A, {rough:0.9});
-  const bldgBody = new THREE.Mesh(new THREE.BoxGeometry(bldgW, bldgH, bldgD), bldgMat);
-  bldgBody.position.set(bldgX, bldgH/2, bldgZ); bldgBody.castShadow = true; scene.add(bldgBody);
+  const doorW = 1.0, doorH = 2.3;
+  const doorMinZ = bldgZ - doorW/2, doorMaxZ = bldgZ + doorW/2;
+  const frontZ1 = bldgZ - bldgD/2, frontZ2 = bldgZ + bldgD/2;
+  const frontX = bldgX - bldgW/2 + wt/2;
+  // Back wall (+x)
+  const wallBack = new THREE.Mesh(new THREE.BoxGeometry(wt, bldgH, bldgD), bldgMat);
+  wallBack.position.set(bldgX + bldgW/2 - wt/2, bldgH/2, bldgZ);
+  wallBack.castShadow = true; scene.add(wallBack);
+  // Left wall (-z)
+  const wallLeft = new THREE.Mesh(new THREE.BoxGeometry(bldgW, bldgH, wt), bldgMat);
+  wallLeft.position.set(bldgX, bldgH/2, bldgZ - bldgD/2 + wt/2);
+  wallLeft.castShadow = true; scene.add(wallLeft);
+  // Right wall (+z) — split for balcony door on second floor
+  const balDoorW = 0.9, balDoorH = 2.1;
+  const balDoorMinX = bldgX - 0.1, balDoorMaxX = balDoorMinX + balDoorW;
+  const balDoorMinY = 2.5, balDoorMaxY = balDoorMinY + balDoorH;
+  const rwZ = bldgZ + bldgD/2 - wt/2;
+  // Right wall: below balcony door (ground floor full width)
+  const rwBelow = new THREE.Mesh(new THREE.BoxGeometry(bldgW, balDoorMinY, wt), bldgMat);
+  rwBelow.position.set(bldgX, balDoorMinY/2, rwZ);
+  rwBelow.castShadow = true; scene.add(rwBelow);
+  // Right wall: left of balcony door (second floor)
+  const rwLeftW = balDoorMinX - (bldgX - bldgW/2);
+  if(rwLeftW > 0.01){
+    const rwL = new THREE.Mesh(new THREE.BoxGeometry(rwLeftW, bldgH - balDoorMinY, wt), bldgMat);
+    rwL.position.set(bldgX - bldgW/2 + rwLeftW/2, balDoorMinY + (bldgH - balDoorMinY)/2, rwZ);
+    rwL.castShadow = true; scene.add(rwL);
+  }
+  // Right wall: right of balcony door (second floor)
+  const rwRightW = (bldgX + bldgW/2) - balDoorMaxX;
+  if(rwRightW > 0.01){
+    const rwR = new THREE.Mesh(new THREE.BoxGeometry(rwRightW, bldgH - balDoorMinY, wt), bldgMat);
+    rwR.position.set(balDoorMaxX + rwRightW/2, balDoorMinY + (bldgH - balDoorMinY)/2, rwZ);
+    rwR.castShadow = true; scene.add(rwR);
+  }
+  // Right wall: above balcony door
+  const rwAboveH = bldgH - balDoorMaxY;
+  if(rwAboveH > 0.01){
+    const rwA = new THREE.Mesh(new THREE.BoxGeometry(balDoorW, rwAboveH, wt), bldgMat);
+    rwA.position.set((balDoorMinX + balDoorMaxX)/2, balDoorMaxY + rwAboveH/2, rwZ);
+    rwA.castShadow = true; scene.add(rwA);
+  }
+  // Balcony door frame
+  const bfMat = mat(0x5C3322, {rough:0.85});
+  const bfL = new THREE.Mesh(new THREE.BoxGeometry(0.05, balDoorH, 0.05), bfMat);
+  bfL.position.set(balDoorMinX, balDoorMinY + balDoorH/2, bldgZ + bldgD/2 + 0.01); scene.add(bfL);
+  const bfR = bfL.clone(); bfR.position.x = balDoorMaxX; scene.add(bfR);
+  const bfT = new THREE.Mesh(new THREE.BoxGeometry(balDoorW + 0.1, 0.05, 0.05), bfMat);
+  bfT.position.set((balDoorMinX + balDoorMaxX)/2, balDoorMaxY, bldgZ + bldgD/2 + 0.01); scene.add(bfT);
+  // Store balcony door params for obstacle registration
+  BFP.balDoorMinX = balDoorMinX; BFP.balDoorMaxX = balDoorMaxX;
+  BFP.balDoorMinY = balDoorMinY; BFP.balDoorMaxY = balDoorMaxY;
+  // Front wall (-x): left of door
+  const leftSegW = doorMinZ - frontZ1;
+  const wallFrontL = new THREE.Mesh(new THREE.BoxGeometry(wt, bldgH, leftSegW), bldgMat);
+  wallFrontL.position.set(frontX, bldgH/2, (frontZ1 + doorMinZ)/2);
+  wallFrontL.castShadow = true; scene.add(wallFrontL);
+  // Front wall (-x): right of door
+  const rightSegW = frontZ2 - doorMaxZ;
+  const wallFrontR = new THREE.Mesh(new THREE.BoxGeometry(wt, bldgH, rightSegW), bldgMat);
+  wallFrontR.position.set(frontX, bldgH/2, (doorMaxZ + frontZ2)/2);
+  wallFrontR.castShadow = true; scene.add(wallFrontR);
+  // Front wall (-x): above door
+  const aboveDoorH = bldgH - doorH;
+  const wallFrontAbove = new THREE.Mesh(new THREE.BoxGeometry(wt, aboveDoorH, doorW), bldgMat);
+  wallFrontAbove.position.set(frontX, doorH + aboveDoorH/2, bldgZ);
+  wallFrontAbove.castShadow = true; scene.add(wallFrontAbove);
   // Roof
   const roofMat = mat(0x3a2a1a, {rough:0.85});
   const roof = new THREE.Mesh(new THREE.BoxGeometry(bldgW + 0.4, 0.15, bldgD + 0.4), roofMat);
   roof.position.set(bldgX, bldgH + 0.07, bldgZ); scene.add(roof);
-  // Door (on the -x face, facing the food station)
-  const doorMat = mat(0x3D2917, {rough:0.8});
-  const door = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 1.6), doorMat);
-  door.position.set(bldgX - bldgW/2 - 0.01, 0.8, bldgZ); scene.add(door);
   // Door frame
   const frameMat = mat(0x5C3322, {rough:0.85});
-  const frameL = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.7, 0.06), frameMat);
-  frameL.position.set(bldgX - bldgW/2 - 0.01, 0.85, bldgZ - 0.38); scene.add(frameL);
-  const frameR = frameL.clone(); frameR.position.z = bldgZ + 0.38; scene.add(frameR);
-  const frameT = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.82), frameMat);
-  frameT.position.set(bldgX - bldgW/2 - 0.01, 1.65, bldgZ); scene.add(frameT);
-  // Windows
+  const frameL = new THREE.Mesh(new THREE.BoxGeometry(0.06, doorH, 0.06), frameMat);
+  frameL.position.set(bldgX - bldgW/2 - 0.01, doorH/2, bldgZ - doorW/2 - 0.03); scene.add(frameL);
+  const frameR = frameL.clone(); frameR.position.z = bldgZ + doorW/2 + 0.03; scene.add(frameR);
+  const frameT = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, doorW + 0.12), frameMat);
+  frameT.position.set(bldgX - bldgW/2 - 0.01, doorH, bldgZ); scene.add(frameT);
+  // Windows (on exterior -x face)
   const winMat = mat(0xffcc66, {rough:0.5, emissive:0xffcc66, emissiveIntensity:0.1, transparent:true, opacity:0.6});
   [[-0.8, 2.5], [0.8, 2.5], [-0.8, 4], [0.8, 4]].forEach(([wz, wy]) => {
     const win = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.6), winMat);
@@ -1522,12 +1898,304 @@ function buildBreakfastStation(){
   });
   // Small sign above door
   const signBoard = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.3, 0.03), mat(0x111111));
-  signBoard.position.set(bldgX - bldgW/2 - 0.02, 1.95, bldgZ); scene.add(signBoard);
+  signBoard.position.set(bldgX - bldgW/2 - 0.02, doorH + 0.25, bldgZ); scene.add(signBoard);
   const signText = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.08, 0.035), mat(0xFFFFFF));
-  signText.position.set(bldgX - bldgW/2 - 0.025, 1.95, bldgZ); scene.add(signText);
-  // Register building as obstacle
+  signText.position.set(bldgX - bldgW/2 - 0.025, doorH + 0.25, bldgZ); scene.add(signText);
+  // Store building params and door reference
   BFP.buildingDoorX = bldgX - bldgW/2;
   BFP.buildingDoorZ = bldgZ;
+  BFP.bldgX = bldgX; BFP.bldgZ = bldgZ;
+  BFP.bldgW = bldgW; BFP.bldgD = bldgD; BFP.bldgH = bldgH;
+  BFP.wt = wt;
+}
+
+// ═══════════════════════════════════
+//  SCHOOL INTERIOR (explorable)
+// ═══════════════════════════════════
+function buildSchoolInterior() {
+  const bx = BFP.bldgX, bz = BFP.bldgZ;
+  const bw = BFP.bldgW, bd = BFP.bldgD, bh = BFP.bldgH;
+  const wt = BFP.wt;
+  // Interior bounds
+  const iMinX = bx - bw/2 + wt;   // 13.65
+  const iMaxX = bx + bw/2 - wt;   // 17.35
+  const iMinZ = bz - bd/2 + wt;   // -5.35
+  const iMaxZ = bz + bd/2 - wt;   // -0.65
+  const floorY = 2.5;             // second floor height
+
+  // Materials
+  const floorMat  = mat(0x8B7355, {rough:0.7});
+  const woodMat   = mat(0x8B6914, {rough:0.7});
+  const dkWoodMat = mat(0x5C3D1A, {rough:0.75});
+  const metalMat  = mat(0x888888, {rough:0.4, metalness:0.5});
+  const creamMat  = mat(0xF5E6D0, {rough:0.8});
+
+  // ── Ground floor wood planks ──
+  const gFloor = new THREE.Mesh(new THREE.BoxGeometry(iMaxX - iMinX, 0.05, iMaxZ - iMinZ), floorMat);
+  gFloor.position.set((iMinX+iMaxX)/2, 0.025, (iMinZ+iMaxZ)/2);
+  gFloor.receiveShadow = true; scene.add(gFloor);
+
+  // ── Interior point light (ground floor) ──
+  const light1 = new THREE.PointLight(0xFFF5E0, 0.8, 8);
+  light1.position.set(bx, 2.2, bz); scene.add(light1);
+
+  // ── Whiteboard on back wall (+x interior face) ──
+  const wbFrame = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.85, 2.05), dkWoodMat);
+  wbFrame.position.set(iMaxX - 0.04, 1.3, bz); scene.add(wbFrame);
+  const wb = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.8, 2.0), mat(0xF0F0F0, {rough:0.5}));
+  wb.position.set(iMaxX - 0.02, 1.3, bz); scene.add(wb);
+  const wbTray = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.03, 1.8), dkWoodMat);
+  wbTray.position.set(iMaxX - 0.05, 0.87, bz); scene.add(wbTray);
+  // Chalk marks on whiteboard
+  [[-0.4, 0.15], [0.1, -0.05], [0.5, 0.1]].forEach(([oz, oy]) => {
+    const mark = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.05, 0.35), mat(0xCCCCCC, {rough:0.9}));
+    mark.position.set(iMaxX - 0.015, 1.3 + oy, bz + oz); scene.add(mark);
+  });
+
+  // ── Teacher desk (near whiteboard) ──
+  const tDesk = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.55, 0.5), woodMat);
+  tDesk.position.set(iMaxX - 0.55, 0.275, bz + 1.0); scene.add(tDesk);
+  // Teacher chair
+  const tChSeat = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.05, 0.3), dkWoodMat);
+  tChSeat.position.set(iMaxX - 0.55, 0.35, bz + 1.5); scene.add(tChSeat);
+  const tChBack = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.35, 0.04), dkWoodMat);
+  tChBack.position.set(iMaxX - 0.55, 0.52, bz + 1.65); scene.add(tChBack);
+
+  // ── Student desks (2 rows × 2 columns) ──
+  for(let r = 0; r < 2; r++){
+    for(let c = 0; c < 2; c++){
+      const dx = iMinX + 1.0 + r * 1.4;
+      const dz = bz - 0.4 + c * 1.5;
+      // Desktop
+      const desk = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.04, 0.45), woodMat);
+      desk.position.set(dx, 0.5, dz); scene.add(desk);
+      // Desk legs
+      const legGeo = new THREE.BoxGeometry(0.03, 0.5, 0.03);
+      [[-1,-1],[-1,1],[1,-1],[1,1]].forEach(([lx,lz]) => {
+        const leg = new THREE.Mesh(legGeo, metalMat);
+        leg.position.set(dx + lx*0.25, 0.25, dz + lz*0.18); scene.add(leg);
+      });
+      // Chair behind desk
+      const ch = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.04, 0.28), dkWoodMat);
+      ch.position.set(dx, 0.32, dz - 0.42); scene.add(ch);
+      const chLegs = new THREE.BoxGeometry(0.025, 0.32, 0.025);
+      [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([lx,lz]) => {
+        const cl = new THREE.Mesh(chLegs, metalMat);
+        cl.position.set(dx + lx*0.11, 0.16, dz - 0.42 + lz*0.11); scene.add(cl);
+      });
+    }
+  }
+
+  // ── Bulletin board on right wall (+z interior face) ──
+  const bb = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.8, 0.03), mat(0xCC9966, {rough:0.8}));
+  bb.position.set(bx, 1.4, iMaxZ - 0.03); scene.add(bb);
+  [[0.3,0.2,0xFF6666],[-0.2,0.15,0x66CC66],[0.1,-0.1,0x6699FF],[-0.3,-0.15,0xFFCC33]].forEach(([ox,oy,col]) => {
+    const p = new THREE.Mesh(new THREE.BoxGeometry(0.18,0.22,0.035), mat(col,{rough:0.5}));
+    p.position.set(bx+ox, 1.4+oy, iMaxZ-0.025); scene.add(p);
+  });
+
+  // ── Small bookshelf near door (right side, ground floor) ──
+  const shelf = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.8, 0.55), dkWoodMat);
+  shelf.position.set(iMinX + 0.25, 0.4, iMaxZ - 0.35); scene.add(shelf);
+  [0xCC3333,0x336699,0x339933,0xCC9933].forEach((col,i) => {
+    const bk = new THREE.Mesh(new THREE.BoxGeometry(0.04,0.2,0.12), mat(col,{rough:0.6}));
+    bk.position.set(iMinX + 0.25, 0.72, iMaxZ - 0.5 + i*0.12); scene.add(bk);
+  });
+
+  // ── Staircase along left wall (-z) ──
+  const stairMat = mat(0x7a6a5a, {rough:0.75});
+  const stepH = floorY / 7;
+  const stepD = 0.4;
+  const stairW = 0.9;
+  const stairMinZ = iMinZ;
+  const stairMaxZ = iMinZ + stairW;
+  const stairStartX = iMinX + 0.25;
+  BFP.stairObstacles = [];
+  for(let i = 0; i < 7; i++){
+    const sx = stairStartX + i * stepD;
+    const sy = (i + 1) * stepH;
+    const step = new THREE.Mesh(new THREE.BoxGeometry(stepD - 0.02, sy, stairW), stairMat);
+    step.position.set(sx + stepD/2, sy/2, (stairMinZ + stairMaxZ)/2);
+    step.castShadow = true; scene.add(step);
+    BFP.stairObstacles.push({
+      minX: sx, maxX: sx + stepD,
+      minZ: stairMinZ, maxZ: stairMaxZ,
+      topY: sy, type: 'floor'
+    });
+  }
+  // Stair railing (along open side, stairMaxZ)
+  const railLen = 7 * stepD;
+  for(let i = 0; i <= 3; i++){
+    const px = stairStartX + i * railLen/3;
+    const py = (i/3) * floorY + 0.4;
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.65, 0.03), metalMat);
+    post.position.set(px, py, stairMaxZ + 0.03); scene.add(post);
+  }
+  const railBar = new THREE.Mesh(new THREE.BoxGeometry(railLen, 0.04, 0.04), metalMat);
+  railBar.position.set(stairStartX + railLen/2, floorY * 0.55 + 0.4, stairMaxZ + 0.03);
+  railBar.rotation.z = -Math.atan2(floorY, railLen);
+  scene.add(railBar);
+
+  // ── Second floor platform ──
+  const pfThick = 0.1;
+  const mainPfMinZ = stairMaxZ;
+  // Main platform (spans full x, from stair edge to far wall)
+  const mainPf = new THREE.Mesh(
+    new THREE.BoxGeometry(iMaxX - iMinX, pfThick, iMaxZ - mainPfMinZ), floorMat
+  );
+  mainPf.position.set((iMinX+iMaxX)/2, floorY, (mainPfMinZ+iMaxZ)/2);
+  mainPf.receiveShadow = true; scene.add(mainPf);
+  // Landing at top of stairs (back portion over stairwell)
+  const landMinX = stairStartX + 7 * stepD;
+  const landPf = new THREE.Mesh(
+    new THREE.BoxGeometry(iMaxX - landMinX + 0.1, pfThick, stairW + 0.05), floorMat
+  );
+  landPf.position.set((landMinX + iMaxX)/2, floorY, (stairMinZ + stairMaxZ)/2);
+  landPf.receiveShadow = true; scene.add(landPf);
+
+  // Register floor obstacles for second floor
+  BFP.floorObstacles = [
+    {minX: iMinX, maxX: iMaxX, minZ: mainPfMinZ, maxZ: iMaxZ, topY: floorY, type: 'floor'},
+    {minX: landMinX - 0.05, maxX: iMaxX, minZ: stairMinZ, maxZ: stairMaxZ + 0.05, topY: floorY, type: 'floor'}
+  ];
+
+  // Stairwell railing on second floor edge
+  const rail2Len = landMinX - iMinX;
+  const rail2 = new THREE.Mesh(new THREE.BoxGeometry(rail2Len, 0.04, 0.04), metalMat);
+  rail2.position.set(iMinX + rail2Len/2, floorY + 0.65, mainPfMinZ + 0.03);
+  scene.add(rail2);
+  for(let i = 0; i <= 2; i++){
+    const rp = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.65, 0.03), metalMat);
+    rp.position.set(iMinX + i * rail2Len/2, floorY + 0.325, mainPfMinZ + 0.03);
+    scene.add(rp);
+  }
+
+  // ── Interior light (second floor) ──
+  const light2 = new THREE.PointLight(0xFFF5E0, 0.8, 8);
+  light2.position.set(bx, floorY + 2.0, bz + 0.5); scene.add(light2);
+
+  // ── Ceiling ──
+  const ceiling = new THREE.Mesh(new THREE.BoxGeometry(iMaxX-iMinX, 0.05, iMaxZ-iMinZ), creamMat);
+  ceiling.position.set((iMinX+iMaxX)/2, bh - 0.05, (iMinZ+iMaxZ)/2); scene.add(ceiling);
+
+  // ── Second Floor — Library / Study Room ──
+  // Tall bookshelf on back wall (+x)
+  const bs1 = new THREE.Mesh(new THREE.BoxGeometry(0.35, 1.8, 1.5), dkWoodMat);
+  bs1.position.set(iMaxX - 0.2, floorY + 0.95, bz); scene.add(bs1);
+  // Books on bookshelf rows
+  for(let row = 0; row < 4; row++){
+    const rowY = floorY + 0.25 + row * 0.42;
+    for(let b = 0; b < 7; b++){
+      const bk = new THREE.Mesh(
+        new THREE.BoxGeometry(0.04 + Math.random()*0.02, 0.17 + Math.random()*0.08, 0.11),
+        mat([0xCC3333,0x336699,0x339933,0xCC9933,0x993399,0x666666,0x885522][b%7], {rough:0.6})
+      );
+      bk.position.set(iMaxX - 0.17, rowY, bz - 0.55 + b*0.14); scene.add(bk);
+    }
+  }
+
+  // Second bookshelf on right wall (+z) — shifted left to clear balcony door path
+  const bs2 = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.5, 0.3), dkWoodMat);
+  bs2.position.set(bx - 1.2, floorY + 0.8, iMaxZ - 0.2); scene.add(bs2);
+  for(let row = 0; row < 3; row++){
+    const rowY = floorY + 0.25 + row * 0.42;
+    for(let b = 0; b < 5; b++){
+      const bk = new THREE.Mesh(
+        new THREE.BoxGeometry(0.12, 0.15 + Math.random()*0.06, 0.04),
+        mat([0xCC5533,0x335599,0x559933,0xBB8833,0x884488][b%5], {rough:0.6})
+      );
+      bk.position.set(bx - 1.6 + b*0.16, rowY, iMaxZ - 0.17); scene.add(bk);
+    }
+  }
+
+  // Reading table (center of second floor)
+  const rTable = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.04, 0.65), woodMat);
+  rTable.position.set(bx - 0.3, floorY + 0.55, bz + 0.6); scene.add(rTable);
+  const tLegGeo = new THREE.BoxGeometry(0.04, 0.5, 0.04);
+  [[-0.45,-0.28],[-0.45,0.28],[0.45,-0.28],[0.45,0.28]].forEach(([lx,lz]) => {
+    const tl = new THREE.Mesh(tLegGeo, dkWoodMat);
+    tl.position.set(bx - 0.3 + lx, floorY + 0.275, bz + 0.6 + lz); scene.add(tl);
+  });
+
+  // Chairs around reading table
+  [[-0.65, 0, 0], [0.65, 0, Math.PI], [0, -0.5, Math.PI/2]].forEach(([cx, cz, ry]) => {
+    const chG = new THREE.Group();
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.04, 0.28), dkWoodMat);
+    seat.position.y = 0.35; chG.add(seat);
+    const back = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.3, 0.04), dkWoodMat);
+    back.position.set(0, 0.5, -0.14); chG.add(back);
+    chG.position.set(bx - 0.3 + cx, floorY, bz + 0.6 + cz);
+    chG.rotation.y = ry; scene.add(chG);
+  });
+
+  // Globe on a small stand
+  const globeStand = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.06, 0.2, 8), metalMat);
+  globeStand.position.set(iMinX + 0.5, floorY + 0.65, bz - 0.8); scene.add(globeStand);
+  const globe = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 8), mat(0x4488AA, {rough:0.4}));
+  globe.position.set(iMinX + 0.5, floorY + 0.85, bz - 0.8); scene.add(globe);
+  BFP.globe = globe; // for subtle spin animation
+
+  // Painting / poster on left wall (-z, second floor)
+  const frameM = new THREE.Mesh(new THREE.BoxGeometry(0.65, 0.45, 0.025), dkWoodMat);
+  frameM.position.set(bx + 0.5, floorY + 1.3, iMinZ + 0.025); scene.add(frameM);
+  const painting = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.38, 0.03), mat(0xDDCC88, {rough:0.5}));
+  painting.position.set(bx + 0.5, floorY + 1.3, iMinZ + 0.035); scene.add(painting);
+
+  // Small rug on second floor
+  const rug = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.01, 0.8), mat(0x8B2252, {rough:0.95}));
+  rug.position.set(bx - 0.3, floorY + 0.06, bz + 0.6); scene.add(rug);
+
+  // ═══ BALCONY (extends from +z wall at second floor) ═══
+  const balW = 2.5, balD = 1.8, balThick = 0.1;
+  const balZ = iMaxZ + balD/2;  // extends outward from +z wall
+  const balCx = (BFP.balDoorMinX + BFP.balDoorMaxX) / 2;
+
+  // Balcony floor platform
+  const balFloor = new THREE.Mesh(new THREE.BoxGeometry(balW, balThick, balD), floorMat);
+  balFloor.position.set(balCx, floorY, balZ);
+  balFloor.castShadow = true; balFloor.receiveShadow = true; scene.add(balFloor);
+
+  // Support brackets under balcony (two angled supports)
+  const bracketMat = mat(0x5C3D1A, {rough:0.7});
+  [-0.9, 0.9].forEach(ox => {
+    // Vertical part
+    const vb = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.5, 0.08), bracketMat);
+    vb.position.set(balCx + ox, floorY - 0.8, iMaxZ + 0.15); scene.add(vb);
+    // Diagonal brace
+    const db = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.6, 0.06), bracketMat);
+    db.position.set(balCx + ox, floorY - 0.7, iMaxZ + balD * 0.5);
+    db.rotation.x = 0.55; scene.add(db);
+  });
+
+  // Railing — front (+z edge)
+  const railMat = mat(0x666666, {rough:0.4, metalness:0.5});
+  const rFront = new THREE.Mesh(new THREE.BoxGeometry(balW, 0.04, 0.04), railMat);
+  rFront.position.set(balCx, floorY + 0.75, iMaxZ + balD); scene.add(rFront);
+  // Railing — left side
+  const rLeft = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, balD), railMat);
+  rLeft.position.set(balCx - balW/2, floorY + 0.75, balZ); scene.add(rLeft);
+  // Railing — right side
+  const rRight = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, balD), railMat);
+  rRight.position.set(balCx + balW/2, floorY + 0.75, balZ); scene.add(rRight);
+
+  // Railing posts
+  for(let i = 0; i <= 4; i++){
+    const px = balCx - balW/2 + i * balW/4;
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.75, 0.03), railMat);
+    post.position.set(px, floorY + 0.375, iMaxZ + balD); scene.add(post);
+  }
+  // Side posts
+  [balCx - balW/2, balCx + balW/2].forEach(px => {
+    const sp = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.75, 0.03), railMat);
+    sp.position.set(px, floorY + 0.375, balZ); scene.add(sp);
+  });
+
+  // Register balcony floor obstacle (walkable — player can stand on it and jump off)
+  BFP.floorObstacles.push({
+    minX: balCx - balW/2, maxX: balCx + balW/2,
+    minZ: iMaxZ - 0.1, maxZ: iMaxZ + balD,
+    topY: floorY, type: 'floor'
+  });
 }
 
 // ── Build a child figure (smaller proportions) ──
@@ -1560,10 +2228,10 @@ function buildBreakfastChild(){
   // Hair
   const hairStyles = [0x1a1008, 0x0a0a0a, 0x2a1a0a];
   const hair = new THREE.Mesh(
-    new THREE.SphereGeometry(0.095, 8, 6, 0, TAU, 0, PI*0.55),
+    new THREE.SphereGeometry(0.095, 8, 6, 0, TAU, 0, PI*0.4),
     mat(hairStyles[floor(Math.random()*hairStyles.length)])
   );
-  hair.position.y = 1.08 * hScale; g.add(hair);
+  hair.position.set(0, 1.1 * hScale, -0.02); g.add(hair);
   // Shoes
   [-0.05, 0.05].forEach(sx => {
     const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.035, 0.1), mat(0x333333));
@@ -1630,13 +2298,13 @@ function buildVolunteer(x, z, rot, skinColor, shirtColor){
   // Hair / head covering
   if(Math.random() > 0.5){
     // Head wrap / bandana
-    const wrap = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 6, 0, TAU, 0, PI*0.5),
+    const wrap = new THREE.Mesh(new THREE.SphereGeometry(0.14, 8, 6, 0, TAU, 0, PI*0.4),
       mat(Math.random()>0.5 ? 0x8B0000 : 0x2F4F4F));
-    wrap.position.y = 1.56 * hScale; g.add(wrap);
+    wrap.position.set(0, 1.58 * hScale, -0.02); g.add(wrap);
   } else {
     // Natural hair
-    const hair = new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 6, 0, TAU, 0, PI*0.5), mat(0x1a1008));
-    hair.position.y = 1.55 * hScale; g.add(hair);
+    const hair = new THREE.Mesh(new THREE.SphereGeometry(0.15, 10, 6, 0, TAU, 0, PI*0.4), mat(0x1a1008));
+    hair.position.set(0, 1.58 * hScale, -0.03); g.add(hair);
   }
   // Shoes
   [-0.08, 0.08].forEach(sx => {
@@ -2094,10 +2762,10 @@ function buildHopscotchChild(x, z, rot){
   head.position.y = 1.08 * hScale; g.add(head);
   const hairStyles = [0x1a1008, 0x0a0a0a, 0x2a1a0a];
   const hair = new THREE.Mesh(
-    new THREE.SphereGeometry(0.105, 8, 6, 0, TAU, 0, PI*0.55),
+    new THREE.SphereGeometry(0.105, 8, 6, 0, TAU, 0, PI*0.4),
     mat(hairStyles[floor(Math.random()*hairStyles.length)])
   );
-  hair.position.y = 1.11 * hScale; g.add(hair);
+  hair.position.set(0, 1.13 * hScale, -0.02); g.add(hair);
   [-0.05, 0.05].forEach(sx => {
     const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.035, 0.1), mat(0x333333));
     shoe.position.set(sx, 0.018, 0.01); g.add(shoe);
@@ -2561,10 +3229,10 @@ function buildCrouchingChild(x, z, facingAngle){
   g.add(head);
   // Hair
   const hair = new THREE.Mesh(
-    new THREE.SphereGeometry(0.1, 8, 6, 0, TAU, 0, PI*0.55),
+    new THREE.SphereGeometry(0.1, 8, 6, 0, TAU, 0, PI*0.4),
     mat([0x1a1008, 0x0a0a0a, 0x2a1a0a][floor(Math.random()*3)])
   );
-  hair.position.set(0, 0.81*hs, 0.09);
+  hair.position.set(0, 0.83*hs, 0.06);
   g.add(hair);
   // Shoes
   [-0.05, 0.05].forEach(sx => {
@@ -2853,10 +3521,10 @@ function buildKneelingChild(x, z, facingAngle){
   g.add(head);
   // Hair
   const hair = new THREE.Mesh(
-    new THREE.SphereGeometry(0.1,8,6,0,TAU,0,PI*0.55),
+    new THREE.SphereGeometry(0.1,8,6,0,TAU,0,PI*0.4),
     mat([0x1a1008,0x0a0a0a,0x2a1a0a][floor(Math.random()*3)])
   );
-  hair.position.set(0, 0.75*hs, 0.07);
+  hair.position.set(0, 0.77*hs, 0.04);
   g.add(hair);
   // Shoes
   [-0.06, 0.06].forEach(sx => {
@@ -3561,9 +4229,37 @@ function registerObstacles(){
   obstacles.push({minX:cx-2.1, maxX:cx+2.1, minZ:cz-1.0, maxZ:cz-0.7, topY:3.0, type:'wall'});
   // Canopy support poles are thin — skip those
 
-  // Community building (children walk into this)
-  // bldgX=15.5, bldgW=4, bldgD=5 → x:[13.5,17.5], z:[cz-2.5, cz+2.5]
-  obstacles.push({minX:13.5, maxX:17.5, minZ:BFP.cz-2.5, maxZ:BFP.cz+2.5, topY:5.0, type:'wall'});
+  // Community building — individual wall segments with door gap
+  const bx = BFP.bldgX, bz2 = BFP.bldgZ, bwt = BFP.wt;
+  const bMinX = bx - BFP.bldgW/2, bMaxX = bx + BFP.bldgW/2;
+  const bMinZ = bz2 - BFP.bldgD/2, bMaxZ = bz2 + BFP.bldgD/2;
+  const doorMinZ = bz2 - 0.5, doorMaxZ = bz2 + 0.5;
+  // Back wall (+x)
+  obstacles.push({minX: bMaxX - bwt, maxX: bMaxX, minZ: bMinZ, maxZ: bMaxZ, topY:5.0, type:'wall'});
+  // Left wall (-z)
+  obstacles.push({minX: bMinX, maxX: bMaxX, minZ: bMinZ, maxZ: bMinZ + bwt, topY:5.0, type:'wall'});
+  // Right wall (+z) — split for balcony door opening on second floor
+  // Ground floor portion (full width, up to second floor)
+  obstacles.push({minX: bMinX, maxX: bMaxX, minZ: bMaxZ - bwt, maxZ: bMaxZ, topY:2.5, type:'wall'});
+  // Second floor: left of balcony door
+  if(BFP.balDoorMinX > bMinX + 0.01)
+    obstacles.push({minX: bMinX, maxX: BFP.balDoorMinX, minZ: bMaxZ - bwt, maxZ: bMaxZ, topY:5.0, minY:2.5, type:'wall'});
+  // Second floor: right of balcony door
+  if(BFP.balDoorMaxX < bMaxX - 0.01)
+    obstacles.push({minX: BFP.balDoorMaxX, maxX: bMaxX, minZ: bMaxZ - bwt, maxZ: bMaxZ, topY:5.0, minY:2.5, type:'wall'});
+  // Second floor: above balcony door
+  obstacles.push({minX: BFP.balDoorMinX, maxX: BFP.balDoorMaxX, minZ: bMaxZ - bwt, maxZ: bMaxZ, topY:5.0, minY:BFP.balDoorMaxY, type:'wall'});
+  // Front wall left of door
+  obstacles.push({minX: bMinX, maxX: bMinX + bwt, minZ: bMinZ, maxZ: doorMinZ, topY:5.0, type:'wall'});
+  // Front wall right of door
+  obstacles.push({minX: bMinX, maxX: bMinX + bwt, minZ: doorMaxZ, maxZ: bMaxZ, topY:5.0, type:'wall'});
+  // Front wall above door
+  obstacles.push({minX: bMinX, maxX: bMinX + bwt, minZ: doorMinZ, maxZ: doorMaxZ, topY:5.0, minY:2.3, type:'wall'});
+
+  // Stair step obstacles (walkable)
+  if(BFP.stairObstacles) BFP.stairObstacles.forEach(o => obstacles.push(o));
+  // Second floor platform obstacles (walkable)
+  if(BFP.floorObstacles) BFP.floorObstacles.forEach(o => obstacles.push(o));
 
   // Fences (thin walls along z = ±14, x: -18 to 18)
   obstacles.push({minX:-18, maxX:18, minZ:-14.3, maxZ:-13.7, topY:2.5, type:'fence'});
@@ -3791,15 +4487,33 @@ function updateCamera(dt){
   );
 
   // Desired camera position: orbit behind player
-  const desiredX = lookTarget.x + camDist * sin(camYaw) * cos(camPitch);
-  const desiredY = lookTarget.y + camDist * sin(camPitch) + 0.5;
-  const desiredZ = lookTarget.z + camDist * cos(camYaw) * cos(camPitch);
+  // Pull camera close when inside the school building or on balcony
+  let effectiveCamDist = camDist;
+  const bldgMinX = 13.5, bldgMaxX = 17.5, bldgMinZ = -5.5, bldgMaxZ = -0.5;
+  const insideBuilding = playerPos.x > bldgMinX + 0.3 && playerPos.x < bldgMaxX - 0.3 &&
+                         playerPos.z > bldgMinZ + 0.3 && playerPos.z < bldgMaxZ - 0.3;
+  const onBalcony = playerPos.y > 2.0 && playerPos.z > bldgMaxZ - 0.3 && playerPos.z < bldgMaxZ + 2.0 &&
+                    playerPos.x > bldgMinX && playerPos.x < bldgMaxX;
+  if(insideBuilding) effectiveCamDist = Math.min(effectiveCamDist, 1.5);
+  if(onBalcony) effectiveCamDist = Math.min(effectiveCamDist, 2.5);
+  const desiredX = lookTarget.x + effectiveCamDist * sin(camYaw) * cos(camPitch);
+  const desiredY = lookTarget.y + effectiveCamDist * sin(camPitch) + 0.5;
+  const desiredZ = lookTarget.z + effectiveCamDist * cos(camYaw) * cos(camPitch);
 
   // Clamp camera above ground
   const minCamY = 0.4;
-  const dy = Math.max(desiredY, minCamY);
+  let clampedX = desiredX, clampedY = Math.max(desiredY, minCamY), clampedZ = desiredZ;
 
-  const desired = new Vector3(desiredX, dy, desiredZ);
+  // Clamp camera inside building walls when player is inside
+  if(insideBuilding){
+    clampedX = clamp(clampedX, bldgMinX + 0.2, bldgMaxX - 0.2);
+    clampedZ = clamp(clampedZ, bldgMinZ + 0.2, bldgMaxZ - 0.2);
+    // Clamp below ceiling of current floor
+    const floorCeil = playerPos.y >= 2.3 ? 4.85 : 2.4;
+    clampedY = Math.min(clampedY, floorCeil);
+  }
+
+  const desired = new Vector3(clampedX, clampedY, clampedZ);
 
   // Smooth position with frame-rate-independent exponential damping
   if(!camSmoothPos) camSmoothPos = desired.clone();
@@ -4142,6 +4856,7 @@ function update(dt){
     animateHopscotch(dt);
     animateJacks(dt);
     animateMarbles(dt);
+    updateAreaSoundVolumes();
 
     // HUD updates
     $score.textContent = score;
@@ -4204,10 +4919,16 @@ function update(dt){
   playerPos.x = clamp(playerPos.x, -28, 28);
   playerPos.z = clamp(playerPos.z, -28, 28);
 
-  // Object collision (cars, benches)
+  // Object collision (cars, benches, building walls)
   for(const obs of obstacles){
+    // Floor surfaces (stairs, platforms) only affect ground level, never block horizontally
+    if(obs.type === 'floor') continue;
     // Skip bench tops when player is above — allows landing on them
     if(obs.type === 'bench' && playerPos.y >= obs.topY - 0.1) continue;
+    // Skip walls the player is above (e.g. ground floor wall when on second floor)
+    if(obs.type === 'wall' && obs.topY < 4.9 && playerPos.y >= obs.topY - 0.05) continue;
+    // Skip wall segments with minY when player is below (door opening)
+    if(obs.minY && playerPos.y + PLAYER_HEIGHT < obs.minY) continue;
     // AABB vs circle
     const closestX = clamp(playerPos.x, obs.minX, obs.maxX);
     const closestZ = clamp(playerPos.z, obs.minZ, obs.maxZ);
@@ -4263,14 +4984,17 @@ function update(dt){
   playerVelY += GRAVITY * dt;
   playerPos.y += playerVelY * dt;
 
-  // Compute effective ground (bench platforms)
+  // Compute effective ground (bench platforms + interior floors/stairs)
   let groundLevel = 0;
   for(const obs of obstacles){
-    if(obs.type === 'bench' &&
+    if((obs.type === 'bench' || obs.type === 'floor') &&
        playerPos.x >= obs.minX - 0.15 && playerPos.x <= obs.maxX + 0.15 &&
-       playerPos.z >= obs.minZ - 0.15 && playerPos.z <= obs.maxZ + 0.15 &&
-       playerPos.y >= obs.topY - 0.15){
-      groundLevel = Math.max(groundLevel, obs.topY);
+       playerPos.z >= obs.minZ - 0.15 && playerPos.z <= obs.maxZ + 0.15){
+      // Floors/stairs use larger tolerance so player auto-steps up
+      const tol = obs.type === 'floor' ? 0.5 : 0.15;
+      if(playerPos.y >= obs.topY - tol){
+        groundLevel = Math.max(groundLevel, obs.topY);
+      }
     }
   }
 
@@ -4372,8 +5096,25 @@ function update(dt){
   const swaySpeed = PI * jazzBPM / 60;
   jazzPerformers.forEach(jp => {
     jp.time += dt;
-    jp.group.rotation.z = sin(jp.time * swaySpeed) * 0.04;
-    jp.group.position.y = sin(jp.time * swaySpeed * 0.5) * 0.02;
+    // Singer gets bigger sway + head movement
+    if(jp.inst === 'singer'){
+      jp.group.rotation.z = sin(jp.time * swaySpeed) * 0.07;
+      jp.group.position.y = sin(jp.time * swaySpeed * 0.5) * 0.03;
+      // Head tilts back while singing, bobs with rhythm
+      const headMesh = jp.group.children.find(c => c.geometry && c.geometry.type === 'SphereGeometry' && c.position.y > 1.5 && c.position.y < 1.7);
+      if(headMesh){
+        headMesh.rotation.x = sin(jp.time * swaySpeed * 0.5) * -0.15 - 0.1;
+        headMesh.rotation.z = sin(jp.time * swaySpeed) * 0.06;
+      }
+      // Mouth opens and closes with the beat
+      const mouthOuter = jp.group.children.find(c => c.position && Math.abs(c.position.y - 1.50) < 0.01 && c.position.z > 0.1 && c.scale && c.scale.y < 0.8);
+      if(mouthOuter){
+        mouthOuter.scale.y = 0.5 + sin(jp.time * swaySpeed * 2) * 0.25;
+      }
+    } else {
+      jp.group.rotation.z = sin(jp.time * swaySpeed) * 0.04;
+      jp.group.position.y = sin(jp.time * swaySpeed * 0.5) * 0.02;
+    }
     // Emit music notes from instruments
     if(jazzPlaying){
       jp.noteTimer -= dt;
@@ -4392,6 +5133,8 @@ function update(dt){
   animateHopscotch(dt);
   animateJacks(dt);
   animateMarbles(dt);
+  // Globe spin in school library
+  if(BFP.globe) BFP.globe.rotation.y += dt * 0.3;
   // Proximity-based jazz volume (inverse square law outside small radius)
   if(jazzAudio){
     const pcx = -1.5, pcz = -9.55;
@@ -4406,6 +5149,7 @@ function update(dt){
     }
     jazzAudio.volume = clamp(vol, 0.0, 0.6);
   }
+  updateAreaSoundVolumes();
   updateCamera(dt);
   tickParticles(dt);
 
@@ -4441,6 +5185,7 @@ buildMarchGroup();
 buildSpectators();
 buildJazzPerformers();
 buildBreakfastProgram();
+buildSchoolInterior();
 buildHopscotch();
 buildJacks();
 buildMarbles();
@@ -4452,6 +5197,13 @@ document.getElementById('menuBtn').addEventListener('click', () => {
   if(state !== 'menu'){
     if(document.pointerLockElement) document.exitPointerLock();
     showMenu();
+  }
+});
+
+// Click on canvas re-locks pointer if not in menu
+renderer.domElement.addEventListener('click', () => {
+  if(state !== 'menu' && !document.pointerLockElement){
+    renderer.domElement.requestPointerLock().catch(()=>{});
   }
 });
 
