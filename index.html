@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Black Joy</title>
+<title>Black Joy — Double Dutch 3D</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#000;overflow:hidden;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;user-select:none}
@@ -325,17 +325,17 @@ document.addEventListener('visibilitychange', () => {
 // ═══════════════════════════════════
 //  THREE.JS SETUP
 // ═══════════════════════════════════
-const renderer = new THREE.WebGLRenderer({antialias:true, alpha:false});
+const renderer = new THREE.WebGLRenderer({antialias:true, alpha:false, powerPreference:'high-performance'});
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.1;
+renderer.toneMappingExposure = 1.3;
 document.body.prepend(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x1a1830, 0.012);
+scene.fog = new THREE.FogExp2(0x87CEEB, 0.008);
 
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth/window.innerHeight, 0.1, 200);
 camera.position.set(0, 3, 8);
@@ -346,18 +346,18 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// ── LIGHTING ── (golden hour feel)
-const ambientLight = new THREE.AmbientLight(0x554433, 0.6);
+// ── LIGHTING ── (bright daytime)
+const ambientLight = new THREE.AmbientLight(0x99bbdd, 1.0);
 scene.add(ambientLight);
 
-const sunLight = new THREE.DirectionalLight(0xffcc88, 2.2);
-sunLight.position.set(-15, 20, 10);
+const sunLight = new THREE.DirectionalLight(0xffffff, 2.5);
+sunLight.position.set(-10, 25, 12);
 sunLight.castShadow = true;
-sunLight.shadow.mapSize.set(2048, 2048);
-sunLight.shadow.camera.left = -25;
-sunLight.shadow.camera.right = 25;
-sunLight.shadow.camera.top = 25;
-sunLight.shadow.camera.bottom = -25;
+sunLight.shadow.mapSize.set(1024, 1024);
+sunLight.shadow.camera.left = -18;
+sunLight.shadow.camera.right = 18;
+sunLight.shadow.camera.top = 18;
+sunLight.shadow.camera.bottom = -18;
 sunLight.shadow.camera.near = 0.5;
 sunLight.shadow.camera.far = 60;
 sunLight.shadow.bias = -0.001;
@@ -441,16 +441,6 @@ function buildEnvironment(){
     line.rotation.x = -PI/2;
     line.position.set(i*2, 0.005, 0);
     scene.add(line);
-  }
-
-  // Hopscotch chalk marks
-  const chalkGeo = new THREE.PlaneGeometry(0.7, 0.7);
-  const chalkMat = mat(0xffcccc, {rough:1, transparent:true, opacity:0.08});
-  for(let i=0; i<6; i++){
-    const c = new THREE.Mesh(chalkGeo, chalkMat);
-    c.rotation.x = -PI/2;
-    c.position.set(-6 + rand(-0.3,0.3), 0.005, -3+i*1.1);
-    scene.add(c);
   }
 
   // Guide line between turners (shows where to jump)
@@ -620,9 +610,9 @@ function buildSky(){
       varying vec3 vPos;
       void main(){
         float h = normalize(vPos).y;
-        vec3 low  = vec3(0.93, 0.77, 0.47);  // golden
-        vec3 mid  = vec3(0.71, 0.35, 0.18);  // orange
-        vec3 high = vec3(0.15, 0.09, 0.19);  // deep purple
+        vec3 low  = vec3(0.75, 0.88, 1.0);   // pale horizon
+        vec3 mid  = vec3(0.45, 0.68, 0.95);  // sky blue
+        vec3 high = vec3(0.22, 0.42, 0.78);  // deep blue
         vec3 col = mix(low, mid, smoothstep(0.0, 0.3, h));
         col = mix(col, high, smoothstep(0.3, 0.8, h));
         gl_FragColor = vec4(col, 1.0);
@@ -1040,7 +1030,8 @@ function emit3D(pos, count, cfg){
 }
 
 function tickParticles(dt){
-  for(let i=particles.length-1; i>=0; i--){
+  let writeIdx = 0;
+  for(let i=0; i<particles.length; i++){
     const p = particles[i];
     p.mesh.position.x += p.vx * dt;
     p.mesh.position.y += p.vy * dt;
@@ -1051,11 +1042,12 @@ function tickParticles(dt){
     p.mesh.scale.setScalar(p.life);
     if(p.life <= 0){
       scene.remove(p.mesh);
-      p.mesh.geometry?.dispose();
-      p.mesh.material?.dispose();
-      particles.splice(i, 1);
+      p.mesh.material.dispose();
+    } else {
+      particles[writeIdx++] = p;
     }
   }
+  particles.length = writeIdx;
 }
 
 const DUST_CFG  = {colors:[0xc8b89a, 0xa89070, 0xd4c4a8], vyMin:0.5, vyMax:2, grav:-3, decayMin:0.015, decayMax:0.03};
@@ -1095,7 +1087,8 @@ function emitMusicNote(worldPos){
   });
 }
 function tickMusicNotes(dt){
-  for(let i=musicNotes.length-1; i>=0; i--){
+  let w = 0;
+  for(let i=0; i<musicNotes.length; i++){
     const n = musicNotes[i];
     n.sprite.position.x += n.vx * dt;
     n.sprite.position.y += n.vy * dt;
@@ -1106,13 +1099,16 @@ function tickMusicNotes(dt){
     if(n.life <= 0){
       scene.remove(n.sprite);
       n.sprite.material.dispose();
-      musicNotes.splice(i, 1);
+    } else {
+      musicNotes[w++] = n;
     }
   }
+  musicNotes.length = w;
 }
 
 const jazzPerformers = [];
 const obstacles = [];   // {minX, maxX, minZ, maxZ, topY, type}
+const staticNPCPositions = [];  // {x, z, r} for all NPCs that don't already have collision
 const PLAYER_RADIUS = 0.25;
 
 // ═══════════════════════════════════
@@ -1167,6 +1163,7 @@ function buildSpectators(){
     g.position.set(s.x, -0.30, s.z);
     g.rotation.y = s.rot;
     scene.add(g);
+    staticNPCPositions.push({x: s.x, z: s.z, r: 0.35});
   });
 }
 
@@ -1309,6 +1306,7 @@ function buildJazzPerformers(){
     g.rotation.y = m.rot;
     scene.add(g);
     jazzPerformers.push({group:g, inst:m.inst, time:rand(0,TAU), noteOff, noteTimer:rand(0,1.5)});
+    staticNPCPositions.push({x: m.x, z: m.z, r: 0.4});
   });
 
   // Open instrument case on ground (for tips!)
@@ -1687,6 +1685,7 @@ function buildBreakfastProgram(){
     child.yaw = PI;
     // First child is already approaching, rest wait
     if(ci > 0) child.state = 'approaching';
+    child.group.traverse(c => { if(c.isMesh) c.castShadow = false; });
     scene.add(child.group);
     BFP.children.push(child);
   }
@@ -1970,6 +1969,1251 @@ function animateBreakfast(dt){
 }
 
 // ═══════════════════════════════════
+//  HOPSCOTCH
+// ═══════════════════════════════════
+const HOPS = {
+  cx: -8, cz: 6,       // board center-start position
+  dir: -1,              // board goes in -z direction (toward center)
+  children: [],         // NPC children
+  watchers: [],         // children watching / waiting
+  activeChild: 0,
+  boardSquares: [],     // {x, z, w, h, num, type:'single'|'double-l'|'double-r'}
+  marker: null,
+  markerSquare: 0,
+  state: 'idle',       // idle → toss → hopping → returning → pickup → hopout → pause → idle
+  timer: 0,
+  hopIdx: 0,
+  turnCount: 0,
+  hopStartX: 0,
+  hopStartZ: 0,
+  hopDur: 0.5,
+  hopNewHop: true,
+};
+
+// Standard hopscotch layout: 1, 2-3, 4, 5-6, 7, 8-9, 10
+// Each "row" is either single center or two side-by-side
+const HOPS_LAYOUT = [
+  [{num:1, type:'single', ox:0}],
+  [{num:2, type:'double', ox:-0.4}, {num:3, type:'double', ox:0.4}],
+  [{num:4, type:'single', ox:0}],
+  [{num:5, type:'double', ox:-0.4}, {num:6, type:'double', ox:0.4}],
+  [{num:7, type:'single', ox:0}],
+  [{num:8, type:'double', ox:-0.4}, {num:9, type:'double', ox:0.4}],
+  [{num:10, type:'single', ox:0}],
+];
+
+function buildHopscotchBoard(){
+  const cx = HOPS.cx, cz = HOPS.cz, dir = HOPS.dir;
+  const chalkColors = [0xFFFFFF, 0xFFDD88, 0x88BBFF, 0xFF99AA, 0xAAFFAA, 0xFFBBDD];
+  const sqW = 0.7, sqH = 0.7, gap = 0.08;
+  const rowSpacing = sqH + gap;
+
+  HOPS_LAYOUT.forEach((row, ri) => {
+    row.forEach(sq => {
+      const sx = cx + sq.ox;
+      const sz = cz + dir * ri * rowSpacing;
+      const w = sq.type === 'single' ? sqW : sqW * 0.48;
+
+      // Chalk outline (slightly imperfect — multiple overlapping thin lines)
+      const col = chalkColors[(sq.num - 1) % chalkColors.length];
+      const chalkM = mat(col, {rough:1, transparent:true, opacity:0.35, emissive: col, emissiveIntensity:0.05});
+
+      // Edges (4 lines for the box)
+      const thick = 0.04;
+      const wobble = () => rand(-0.02, 0.02);
+      // Top edge
+      const topE = new THREE.Mesh(new THREE.PlaneGeometry(w + 0.06, thick), chalkM);
+      topE.rotation.x = -PI/2;
+      topE.position.set(sx + wobble(), 0.006, sz - sqH/2 + wobble());
+      scene.add(topE);
+      // Bottom edge
+      const botE = new THREE.Mesh(new THREE.PlaneGeometry(w + 0.06, thick), chalkM);
+      botE.rotation.x = -PI/2;
+      botE.position.set(sx + wobble(), 0.006, sz + sqH/2 + wobble());
+      scene.add(botE);
+      // Left edge
+      const leftE = new THREE.Mesh(new THREE.PlaneGeometry(thick, sqH + 0.06), chalkM);
+      leftE.rotation.x = -PI/2;
+      leftE.position.set(sx - w/2 + wobble(), 0.006, sz + wobble());
+      scene.add(leftE);
+      // Right edge
+      const rightE = new THREE.Mesh(new THREE.PlaneGeometry(thick, sqH + 0.06), chalkM);
+      rightE.rotation.x = -PI/2;
+      rightE.position.set(sx + w/2 + wobble(), 0.006, sz + wobble());
+      scene.add(rightE);
+
+      // Number inside (simplified as a small filled rectangle)
+      const numM = mat(col, {rough:1, transparent:true, opacity:0.2});
+      const numDot = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.15), numM);
+      numDot.rotation.x = -PI/2;
+      numDot.position.set(sx + wobble(), 0.007, sz + wobble());
+      scene.add(numDot);
+
+      // Light chalk fill inside (very faint)
+      const fillM = mat(col, {rough:1, transparent:true, opacity:0.06});
+      const fill = new THREE.Mesh(new THREE.PlaneGeometry(w - 0.06, sqH - 0.06), fillM);
+      fill.rotation.x = -PI/2;
+      fill.position.set(sx, 0.005, sz);
+      scene.add(fill);
+
+      HOPS.boardSquares.push({x: sx, z: sz, w, h: sqH, num: sq.num, type: sq.type, row: ri});
+    });
+  });
+
+  // Marker (small rock/beanbag)
+  const markerGeo = new THREE.SphereGeometry(0.05, 6, 5);
+  const markerMesh = new THREE.Mesh(markerGeo, mat(0x8B4513, {rough:0.9}));
+  markerMesh.position.set(cx + 0.6, 0.05, cz + 0.5);
+  markerMesh.castShadow = false;
+  scene.add(markerMesh);
+  HOPS.marker = markerMesh;
+}
+
+function buildHopscotchChild(x, z, rot){
+  const g = new THREE.Group();
+  const skinTones = [0x6B3A1F, 0x8B5A2B, 0x7A5535, 0xA0704C, 0x5C3310, 0xB07848];
+  const skinM = mat(skinTones[floor(Math.random()*skinTones.length)]);
+  const shirtColors = [0xE84C3D, 0x3498DB, 0x2ECC71, 0xF39C12, 0x9B59B6, 0xFF6B35, 0x45B7D1];
+  const shirtM = mat(shirtColors[floor(Math.random()*shirtColors.length)]);
+  const pantsColors = [0x2C3E50, 0x3D2917, 0x34495E];
+  const pantsM = mat(pantsColors[floor(Math.random()*pantsColors.length)]);
+  const hScale = rand(0.7, 0.85);
+
+  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.13, 0.38, 7), shirtM);
+  torso.position.y = 0.72 * hScale; g.add(torso);
+  const lLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.035, 0.32, 6), pantsM);
+  lLeg.position.set(-0.05, 0.38 * hScale, 0); g.add(lLeg); lLeg._isLeg = true;
+  const rLeg = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.035, 0.32, 6), pantsM);
+  rLeg.position.set(0.05, 0.38 * hScale, 0); g.add(rLeg); rLeg._isLeg = true;
+  const armGeo = new THREE.CylinderGeometry(0.03, 0.025, 0.26, 6);
+  const lArm = new THREE.Mesh(armGeo, shirtM);
+  lArm.position.set(-0.15, 0.72 * hScale, 0); g.add(lArm);
+  const rArm = new THREE.Mesh(armGeo, shirtM);
+  rArm.position.set(0.15, 0.72 * hScale, 0); g.add(rArm);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 7), skinM);
+  head.position.y = 1.08 * hScale; g.add(head);
+  const hairStyles = [0x1a1008, 0x0a0a0a, 0x2a1a0a];
+  const hair = new THREE.Mesh(
+    new THREE.SphereGeometry(0.105, 8, 6, 0, TAU, 0, PI*0.55),
+    mat(hairStyles[floor(Math.random()*hairStyles.length)])
+  );
+  hair.position.y = 1.11 * hScale; g.add(hair);
+  [-0.05, 0.05].forEach(sx => {
+    const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.035, 0.1), mat(0x333333));
+    shoe.position.set(sx, 0.018, 0.01); g.add(shoe);
+  });
+
+  g.position.set(x, 0, z);
+  g.rotation.y = rot;
+  g.traverse(c => { if(c.isMesh) c.castShadow = false; });
+  scene.add(g);
+
+  return {group: g, lLeg, rLeg, lArm, rArm, head, hScale, phase: rand(0, TAU)};
+}
+
+function buildHopscotch(){
+  buildHopscotchBoard();
+
+  const cx = HOPS.cx, cz = HOPS.cz;
+  // Active child starts just past the board
+  const child = buildHopscotchChild(cx, cz + 1.2, PI);
+  HOPS.children.push(child);
+
+  // 2-3 watchers standing to the side
+  const watcherData = [
+    {x: cx - 1.5, z: cz + 0.5, rot: PI * 0.3},
+    {x: cx - 1.3, z: cz - 2, rot: PI * 0.2},
+    {x: cx + 1.2, z: cz - 1, rot: -PI * 0.3},
+  ];
+  watcherData.forEach(wd => {
+    const w = buildHopscotchChild(wd.x, wd.z, wd.rot);
+    HOPS.watchers.push(w);
+  });
+
+  // Start first turn
+  HOPS.state = 'toss';
+  HOPS.timer = 1.0;
+  HOPS.markerSquare = 1 + floor(Math.random() * 3);
+  HOPS.hopIdx = 0;
+  HOPS.turnCount = 0;
+  HOPS.hopNewHop = true;
+  HOPS.hopStartX = cx;
+  HOPS.hopStartZ = cz + 1.2;
+}
+
+function animateHopscotch(dt){
+  const cx = HOPS.cx, cz = HOPS.cz, dir = HOPS.dir;
+  const t = performance.now() / 1000;
+  const child = HOPS.children[0];
+  if(!child) return;
+  const g = child.group;
+
+  // Animate watchers (idle fidget)
+  HOPS.watchers.forEach((w, wi) => {
+    const wt = t + wi * 2;
+    w.group.position.y = sin(wt * 1.5) * 0.005;
+    w.head.rotation.y = sin(wt * 0.6 + wi) * 0.2;
+    w.lArm.rotation.x = sin(wt * 0.8) * 0.08;
+    w.rArm.rotation.x = -sin(wt * 0.8 + 0.5) * 0.08;
+    // Slight leg shift
+    w.lLeg.rotation.x = sin(wt * 0.4) * 0.03;
+  });
+
+  // Build ordered sequence of squares for hopping
+  // Rows in order, skip the marker square
+  const rowOrder = [];
+  for(let ri = 0; ri < HOPS_LAYOUT.length; ri++){
+    const rowSquares = HOPS.boardSquares.filter(s => s.row === ri);
+    rowOrder.push(rowSquares);
+  }
+
+  const markerNum = HOPS.markerSquare;
+
+  if(HOPS.state === 'toss'){
+    // Child tosses the marker
+    HOPS.timer -= dt;
+    // Arm wind-up
+    const tossP = 1 - Math.max(0, HOPS.timer) / 1.0;
+    if(tossP < 0.5){
+      child.rArm.rotation.x = lerp(0, -2.0, tossP / 0.5);
+    } else {
+      child.rArm.rotation.x = lerp(-2.0, 0, (tossP - 0.5) / 0.5);
+    }
+    // Move marker to target square
+    if(tossP > 0.4){
+      const targetSq = HOPS.boardSquares.find(s => s.num === markerNum);
+      if(targetSq){
+        const mp = tossP < 0.7 ? (tossP - 0.4) / 0.3 : 1;
+        HOPS.marker.position.x = lerp(cx + 0.3, targetSq.x + rand(-0.05,0.05), mp);
+        HOPS.marker.position.z = lerp(cz + 0.8, targetSq.z, mp);
+        HOPS.marker.position.y = 0.025 + sin(mp * PI) * 0.4;
+      }
+    }
+    if(HOPS.timer <= 0){
+      HOPS.state = 'hopping';
+      HOPS.hopIdx = 0;
+      HOPS.hopDur = 0.5;
+      HOPS.timer = HOPS.hopDur;
+      HOPS.hopNewHop = true;
+      // Place marker flat on target
+      const ts = HOPS.boardSquares.find(s => s.num === markerNum);
+      if(ts){ HOPS.marker.position.set(ts.x, 0.03, ts.z); }
+    }
+  }
+  else if(HOPS.state === 'hopping'){
+    // Hop forward through each row
+    HOPS.timer -= dt;
+    const curRow = rowOrder[HOPS.hopIdx];
+    if(!curRow){
+      HOPS.state = 'returning';
+      HOPS.hopIdx = rowOrder.length - 1;
+      HOPS.hopDur = 0.5;
+      HOPS.timer = HOPS.hopDur;
+      HOPS.hopNewHop = true;
+      return;
+    }
+
+    // Skip row if it only contains the marker square
+    const landableSquares = curRow.filter(s => s.num !== markerNum);
+    if(landableSquares.length === 0 && HOPS.timer <= 0){
+      HOPS.hopIdx++;
+      HOPS.hopDur = 0.4 + rand(0, 0.1);
+      HOPS.timer = HOPS.hopDur;
+      HOPS.hopNewHop = true;
+      return;
+    }
+
+    // Calculate target position for this hop
+    let targetX, targetZ;
+    if(curRow.length === 1){
+      targetX = curRow[0].x;
+      targetZ = curRow[0].z;
+    } else {
+      if(landableSquares.length === 2){
+        targetX = (landableSquares[0].x + landableSquares[1].x) / 2;
+        targetZ = landableSquares[0].z;
+      } else if(landableSquares.length === 1){
+        targetX = landableSquares[0].x;
+        targetZ = landableSquares[0].z;
+      } else {
+        targetX = cx;
+        targetZ = curRow[0].z;
+      }
+    }
+
+    // Store start pos once per hop
+    if(HOPS.hopNewHop){
+      HOPS.hopStartX = g.position.x;
+      HOPS.hopStartZ = g.position.z;
+      HOPS.hopNewHop = false;
+    }
+
+    const hopProgress = Math.max(0, Math.min(1, 1 - HOPS.timer / HOPS.hopDur));
+
+    // Position: arc from stored start to target
+    g.position.x = lerp(HOPS.hopStartX, targetX, hopProgress);
+    g.position.z = lerp(HOPS.hopStartZ, targetZ, hopProgress);
+    // Bounce height (clamped >= 0)
+    g.position.y = Math.max(0, sin(hopProgress * PI) * 0.25);
+
+    // Leg animation
+    const isSingle = curRow.length === 1 || landableSquares.length === 1;
+    if(isSingle){
+      child.lLeg.rotation.x = -0.8 + sin(hopProgress * PI) * 0.3;
+      child.rLeg.rotation.x = sin(hopProgress * PI) * 0.2;
+      child.lLeg.position.y = 0.38 * child.hScale + 0.05;
+    } else {
+      child.lLeg.rotation.x = sin(hopProgress * PI) * 0.15;
+      child.rLeg.rotation.x = sin(hopProgress * PI) * 0.15;
+      child.lLeg.position.y = 0.38 * child.hScale;
+    }
+    // Arms for balance
+    child.lArm.rotation.x = sin(hopProgress * PI * 2) * 0.3;
+    child.rArm.rotation.x = -sin(hopProgress * PI * 2) * 0.3;
+    child.lArm.rotation.z = -0.2 + sin(hopProgress * PI) * 0.15;
+    child.rArm.rotation.z = 0.2 - sin(hopProgress * PI) * 0.15;
+    // Slight wobble
+    g.rotation.z = sin(t * 5 + child.phase) * 0.04;
+    g.rotation.y = PI;
+
+    if(HOPS.timer <= 0){
+      g.position.y = 0;
+      child.lLeg.rotation.x = 0;
+      child.rLeg.rotation.x = 0;
+      child.lLeg.position.y = 0.38 * child.hScale;
+      HOPS.hopIdx++;
+      HOPS.hopDur = 0.4 + rand(0, 0.15);
+      HOPS.timer = HOPS.hopDur;
+      HOPS.hopNewHop = true;
+      // Small random wobble pause
+      if(Math.random() < 0.15) HOPS.timer += 0.3;
+    }
+  }
+  else if(HOPS.state === 'returning'){
+    // Hop backward through rows
+    HOPS.timer -= dt;
+    const curRow = rowOrder[HOPS.hopIdx];
+    if(!curRow || HOPS.hopIdx < 0){
+      HOPS.state = 'pickup';
+      HOPS.timer = 1.2;
+      g.position.y = 0;
+      return;
+    }
+
+    const landableSquares = curRow.filter(s => s.num !== markerNum);
+    const hasMarker = curRow.some(s => s.num === markerNum);
+    if(hasMarker && landableSquares.length === 0 && HOPS.timer <= 0){
+      HOPS.hopIdx--;
+      HOPS.hopDur = 0.4;
+      HOPS.timer = HOPS.hopDur;
+      HOPS.hopNewHop = true;
+      g.position.y = 0;
+      return;
+    }
+    if(hasMarker && HOPS.timer <= 0){
+      HOPS.state = 'pickup';
+      HOPS.timer = 1.2;
+      g.position.y = 0;
+      return;
+    }
+
+    let targetX, targetZ;
+    if(landableSquares.length >= 2){
+      targetX = (landableSquares[0].x + landableSquares[1].x) / 2;
+      targetZ = landableSquares[0].z;
+    } else if(landableSquares.length === 1){
+      targetX = landableSquares[0].x;
+      targetZ = landableSquares[0].z;
+    } else {
+      targetX = curRow[0].x;
+      targetZ = curRow[0].z;
+    }
+
+    // Store start pos once per hop
+    if(HOPS.hopNewHop){
+      HOPS.hopStartX = g.position.x;
+      HOPS.hopStartZ = g.position.z;
+      HOPS.hopNewHop = false;
+    }
+
+    const hopProgress = Math.max(0, Math.min(1, 1 - HOPS.timer / HOPS.hopDur));
+    g.position.x = lerp(HOPS.hopStartX, targetX, hopProgress);
+    g.position.z = lerp(HOPS.hopStartZ, targetZ, hopProgress);
+    g.position.y = Math.max(0, sin(hopProgress * PI) * 0.22);
+    g.rotation.y = 0; // facing back
+
+    const isSingle = curRow.length === 1 || landableSquares.length === 1;
+    if(isSingle){
+      child.rLeg.rotation.x = -0.8 + sin(hopProgress * PI) * 0.3;
+      child.lLeg.rotation.x = sin(hopProgress * PI) * 0.2;
+    } else {
+      child.lLeg.rotation.x = sin(hopProgress * PI) * 0.15;
+      child.rLeg.rotation.x = sin(hopProgress * PI) * 0.15;
+    }
+    child.lArm.rotation.x = sin(hopProgress * PI * 2) * 0.25;
+    child.rArm.rotation.x = -sin(hopProgress * PI * 2) * 0.25;
+    g.rotation.z = sin(t * 5 + child.phase) * 0.03;
+
+    if(HOPS.timer <= 0){
+      g.position.y = 0;
+      child.lLeg.rotation.x = 0;
+      child.rLeg.rotation.x = 0;
+      HOPS.hopIdx--;
+      HOPS.hopDur = 0.4 + rand(0, 0.1);
+      HOPS.timer = HOPS.hopDur;
+      HOPS.hopNewHop = true;
+    }
+  }
+  else if(HOPS.state === 'pickup'){
+    // Bend down to pick up marker
+    HOPS.timer -= dt;
+    const prog = 1 - Math.max(0, HOPS.timer) / 1.2;
+    g.rotation.y = PI; // face the marker
+    if(prog < 0.35){
+      // Lean forward
+      const lean = prog / 0.35;
+      g.children[0].rotation.x = lerp(0, 0.6, lean); // torso lean
+      child.rArm.rotation.x = lerp(0, -1.5, lean);
+      child.lArm.rotation.z = lerp(0, -0.3, lean);
+    } else if(prog < 0.5){
+      // Hold (picking up)
+      g.children[0].rotation.x = 0.6;
+      child.rArm.rotation.x = -1.5;
+    } else if(prog < 0.7){
+      // Stand back up
+      const stand = (prog - 0.5) / 0.2;
+      g.children[0].rotation.x = lerp(0.6, 0, stand);
+      child.rArm.rotation.x = lerp(-1.5, 0, stand);
+      child.lArm.rotation.z = lerp(-0.3, 0, stand);
+      // Hide marker (picked up)
+      HOPS.marker.visible = false;
+    } else {
+      g.children[0].rotation.x = 0;
+      child.rArm.rotation.x = 0;
+      child.lArm.rotation.z = 0;
+    }
+
+    if(HOPS.timer <= 0){
+      HOPS.state = 'hopout';
+      HOPS.timer = 0.6;
+    }
+  }
+  else if(HOPS.state === 'hopout'){
+    // Hop out past the start line
+    HOPS.timer -= dt;
+    if(HOPS.hopNewHop){
+      HOPS.hopStartX = g.position.x;
+      HOPS.hopStartZ = g.position.z;
+      HOPS.hopNewHop = false;
+    }
+    const prog = Math.max(0, Math.min(1, 1 - HOPS.timer / 0.6));
+    const targetZ = cz + 1.2;
+    g.position.z = lerp(HOPS.hopStartZ, targetZ, prog);
+    g.position.x = lerp(HOPS.hopStartX, cx, prog);
+    g.position.y = Math.max(0, sin(prog * PI) * 0.2);
+    g.rotation.y = 0;
+    child.lLeg.rotation.x = sin(prog * PI) * 0.3;
+    child.rLeg.rotation.x = -sin(prog * PI) * 0.3;
+
+    if(HOPS.timer <= 0){
+      g.position.y = 0;
+      g.position.set(cx, 0, cz + 1.2);
+      g.rotation.y = PI;
+      g.rotation.z = 0;
+      child.lLeg.rotation.x = 0;
+      child.rLeg.rotation.x = 0;
+      child.lArm.rotation.x = 0;
+      child.rArm.rotation.x = 0;
+      child.lArm.rotation.z = 0;
+      child.rArm.rotation.z = 0;
+      g.children[0].rotation.x = 0;
+      HOPS.state = 'pause';
+      HOPS.timer = 1.5 + rand(0, 2);
+      HOPS.hopNewHop = true;
+    }
+  }
+  else if(HOPS.state === 'pause'){
+    // Child idles, then starts next turn
+    HOPS.timer -= dt;
+    g.position.y = sin(t * 1.5) * 0.005;
+    child.head.rotation.y = sin(t * 0.7) * 0.15;
+
+    if(HOPS.timer <= 0){
+      HOPS.turnCount++;
+      HOPS.markerSquare = 1 + floor(Math.random() * 6); // toss to random square
+      HOPS.marker.visible = true;
+      HOPS.marker.position.set(cx + 0.6, 0.05, cz + 0.5);
+      HOPS.state = 'toss';
+      HOPS.timer = 1.0;
+      HOPS.hopIdx = 0;
+      HOPS.hopNewHop = true;
+    }
+  }
+
+  // ── Player collision with hopscotch children + watchers ──
+  const px = playerPos.x, pz = playerPos.z;
+  const allHopsNPCs = [...HOPS.children, ...HOPS.watchers];
+  allHopsNPCs.forEach(npc => {
+    const nx = npc.group.position.x, nz = npc.group.position.z;
+    const dx = px - nx, dz = pz - nz;
+    const dist = Math.sqrt(dx*dx + dz*dz);
+    const minDist = 0.45;
+    if(dist < minDist && dist > 0.001){
+      const push = minDist - dist;
+      playerPos.x += (dx / dist) * push;
+      playerPos.z += (dz / dist) * push;
+      const ux = dx / dist, uz = dz / dist;
+      const vDotN = playerVelX * ux + playerVelZ * uz;
+      if(vDotN < 0){ playerVelX -= vDotN * ux; playerVelZ -= vDotN * uz; }
+    }
+  });
+}
+
+// ═══════════════════════════════════
+//  JACKS
+// ═══════════════════════════════════
+const JACKS = {
+  cx: 5, cz: -8,
+  children: [],       // all NPC children (index 0 = active player)
+  ball: null,
+  jacks: [],          // {mesh, onGround}
+  pickupTarget: 1,    // onesies→twosies→threesies…
+  pickedCount: 0,
+  state: 'toss',      // toss → grab → catch → pause → toss (cycle)
+  timer: 0,
+  tossDur: 0.5,
+  grabDur: 0.35,
+  catchDur: 0.4,
+  ballStartY: 0.15,
+  ballPeakY: 1.1,
+};
+
+function buildJackPiece(x, z){
+  const g = new THREE.Group();
+  const m = mat(0xC0C0C0, {metalness:0.7, rough:0.3});
+  const arm = new THREE.CylinderGeometry(0.008, 0.008, 0.06, 4);
+  // 3 crossed rods
+  const a1 = new THREE.Mesh(arm, m); g.add(a1);
+  const a2 = new THREE.Mesh(arm, m); a2.rotation.z = PI/2; g.add(a2);
+  const a3 = new THREE.Mesh(arm, m); a3.rotation.x = PI/2; g.add(a3);
+  // 6 small ball tips
+  const tip = new THREE.SphereGeometry(0.012, 4, 3);
+  [[-0.03,0,0],[0.03,0,0],[0,-0.03,0],[0,0.03,0],[0,0,-0.03],[0,0,0.03]].forEach(p => {
+    const t = new THREE.Mesh(tip, m);
+    t.position.set(p[0],p[1],p[2]);
+    g.add(t);
+  });
+  g.position.set(x, 0.015, z);
+  g.rotation.y = rand(0, TAU);
+  g.traverse(c => { if(c.isMesh) c.castShadow = false; });
+  scene.add(g);
+  return g;
+}
+
+function buildCrouchingChild(x, z, facingAngle){
+  const g = new THREE.Group();
+  const skinTones = [0x6B3A1F, 0x8B5A2B, 0x7A5535, 0xA0704C, 0x5C3310, 0xB07848];
+  const skinM = mat(skinTones[floor(Math.random()*skinTones.length)]);
+  const shirtColors = [0xE84C3D, 0x3498DB, 0x2ECC71, 0xF39C12, 0x9B59B6, 0xFF6B35];
+  const shirtM = mat(shirtColors[floor(Math.random()*shirtColors.length)]);
+  const pantsM = mat([0x2C3E50, 0x3D2917, 0x34495E][floor(Math.random()*3)]);
+  const hs = rand(0.68, 0.82);
+
+  // Torso (tilted forward for crouch)
+  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.13,0.35,7), shirtM);
+  torso.position.set(0, 0.42*hs, 0.06);
+  torso.rotation.x = 0.4; // leaning forward
+  g.add(torso);
+  // Upper legs (bent back)
+  const legGeo = new THREE.CylinderGeometry(0.04,0.035,0.25,6);
+  const lLeg = new THREE.Mesh(legGeo, pantsM);
+  lLeg.position.set(-0.05, 0.25*hs, 0.08); lLeg.rotation.x = 1.2;
+  g.add(lLeg);
+  const rLeg = new THREE.Mesh(legGeo, pantsM);
+  rLeg.position.set(0.05, 0.25*hs, 0.08); rLeg.rotation.x = 1.2;
+  g.add(rLeg);
+  // Lower legs (tucked under)
+  const lLeg2 = new THREE.Mesh(legGeo, pantsM);
+  lLeg2.position.set(-0.05, 0.12*hs, 0.2); lLeg2.rotation.x = 2.2;
+  g.add(lLeg2);
+  const rLeg2 = new THREE.Mesh(legGeo, pantsM);
+  rLeg2.position.set(0.05, 0.12*hs, 0.2); rLeg2.rotation.x = 2.2;
+  g.add(rLeg2);
+  // Arms
+  const armGeo = new THREE.CylinderGeometry(0.028,0.022,0.22,6);
+  const lArm = new THREE.Mesh(armGeo, shirtM);
+  lArm.position.set(-0.14, 0.42*hs, 0.06);
+  g.add(lArm);
+  const rArm = new THREE.Mesh(armGeo, shirtM);
+  rArm.position.set(0.14, 0.42*hs, 0.06);
+  g.add(rArm);
+  // Hands
+  const handGeo = new THREE.SphereGeometry(0.025, 5, 4);
+  const lHand = new THREE.Mesh(handGeo, skinM);
+  lHand.position.set(-0.14, 0.28*hs, 0.08);
+  g.add(lHand);
+  const rHand = new THREE.Mesh(handGeo, skinM);
+  rHand.position.set(0.14, 0.28*hs, 0.08);
+  g.add(rHand);
+  // Head
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.095, 8, 7), skinM);
+  head.position.set(0, 0.78*hs, 0.1);
+  g.add(head);
+  // Hair
+  const hair = new THREE.Mesh(
+    new THREE.SphereGeometry(0.1, 8, 6, 0, TAU, 0, PI*0.55),
+    mat([0x1a1008, 0x0a0a0a, 0x2a1a0a][floor(Math.random()*3)])
+  );
+  hair.position.set(0, 0.81*hs, 0.09);
+  g.add(hair);
+  // Shoes
+  [-0.05, 0.05].forEach(sx => {
+    const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.03, 0.09), mat(0x222222));
+    shoe.position.set(sx, 0.015, 0.28);
+    g.add(shoe);
+  });
+
+  g.position.set(x, 0, z);
+  g.rotation.y = facingAngle;
+  g.traverse(c => { if(c.isMesh) c.castShadow = false; });
+  scene.add(g);
+
+  return { group: g, torso, lArm, rArm, lHand, rHand, head, hs, phase: rand(0, TAU) };
+}
+
+function buildJacks(){
+  const cx = JACKS.cx, cz = JACKS.cz;
+
+  // Scatter 10 jacks in a small area on the ground
+  for(let i = 0; i < 10; i++){
+    const jx = cx + rand(-0.35, 0.35);
+    const jz = cz + rand(-0.35, 0.35);
+    const mesh = buildJackPiece(jx, jz);
+    JACKS.jacks.push({ mesh, onGround: true });
+  }
+
+  // Rubber ball
+  const ball = new THREE.Mesh(
+    new THREE.SphereGeometry(0.04, 8, 6),
+    mat(0xCC2222, { rough: 0.6 })
+  );
+  ball.position.set(cx + 0.15, 0.15, cz);
+  ball.castShadow = false;
+  scene.add(ball);
+  JACKS.ball = ball;
+
+  // Active child (crouching, facing the jacks)
+  const active = buildCrouchingChild(cx, cz + 0.6, PI);
+  JACKS.children.push(active);
+
+  // 2 watching children sitting nearby
+  const w1 = buildCrouchingChild(cx - 0.8, cz + 0.3, PI * 0.7);
+  const w2 = buildCrouchingChild(cx + 0.9, cz + 0.1, -PI * 0.6);
+  JACKS.children.push(w1, w2);
+
+  JACKS.state = 'toss';
+  JACKS.timer = JACKS.tossDur;
+  JACKS.pickupTarget = 1;
+  JACKS.pickedCount = 0;
+}
+
+function animateJacks(dt){
+  const cx = JACKS.cx, cz = JACKS.cz;
+  const t = performance.now() / 1000;
+  const child = JACKS.children[0];
+  if(!child) return;
+
+  // Animate watchers (idle fidget, watching the game)
+  for(let wi = 1; wi < JACKS.children.length; wi++){
+    const w = JACKS.children[wi];
+    const wt = t + wi * 1.7;
+    w.head.rotation.y = sin(wt * 0.5 + wi) * 0.15;
+    w.head.rotation.x = sin(wt * 0.3) * 0.05 - 0.1; // looking down at game
+    w.group.position.y = sin(wt * 1.2) * 0.003;
+    // Occasional lean-in
+    w.torso.rotation.x = 0.4 + sin(wt * 0.4) * 0.05;
+  }
+
+  JACKS.timer -= dt;
+  const ball = JACKS.ball;
+
+  if(JACKS.state === 'toss'){
+    // Ball goes up from hand
+    const p = Math.max(0, Math.min(1, 1 - JACKS.timer / JACKS.tossDur));
+    // Ball arcs up
+    ball.position.x = cx + 0.05;
+    ball.position.z = cz + 0.15;
+    ball.position.y = lerp(JACKS.ballStartY, JACKS.ballPeakY, p);
+    // Right arm tosses upward
+    child.rArm.rotation.x = lerp(0.3, -1.8, p);
+    child.rHand.position.y = lerp(0.28 * child.hs, 0.55 * child.hs, p);
+    child.rHand.position.z = lerp(0.08, -0.05, p);
+    // Eyes follow ball up
+    child.head.rotation.x = lerp(-0.1, 0.3, p);
+
+    if(JACKS.timer <= 0){
+      JACKS.state = 'grab';
+      JACKS.timer = JACKS.grabDur;
+    }
+  }
+  else if(JACKS.state === 'grab'){
+    // Ball hovers at peak, child quickly grabs jacks off ground
+    const p = Math.max(0, Math.min(1, 1 - JACKS.timer / JACKS.grabDur));
+    // Ball slowly descending from peak
+    ball.position.y = lerp(JACKS.ballPeakY, JACKS.ballPeakY * 0.7, p);
+    // Left hand darts down to grab jacks — fast motion
+    const grabPhase = p < 0.5 ? p / 0.5 : 1;
+    const retractPhase = p > 0.5 ? (p - 0.5) / 0.5 : 0;
+    // Reach down
+    child.lArm.rotation.x = lerp(0.3, 1.8, grabPhase) - retractPhase * 1.2;
+    child.lHand.position.y = lerp(0.28 * child.hs, 0.05, grabPhase);
+    child.lHand.position.y = lerp(child.lHand.position.y, 0.2 * child.hs, retractPhase);
+    child.lHand.position.z = lerp(0.08, 0.25, grabPhase) - retractPhase * 0.15;
+    // Torso leans more
+    child.torso.rotation.x = 0.4 + sin(p * PI) * 0.25;
+    // Fingers move fast (wiggle hand)
+    child.lHand.rotation.z = sin(t * 25) * 0.3 * (1 - retractPhase);
+
+    // Hide jacks that are being "picked up"
+    if(p > 0.4 && p < 0.6){
+      let hidden = 0;
+      for(let j = 0; j < JACKS.jacks.length; j++){
+        if(!JACKS.jacks[j].onGround) continue;
+        if(hidden < JACKS.pickupTarget){
+          JACKS.jacks[j].onGround = false;
+          JACKS.jacks[j].mesh.visible = false;
+          hidden++;
+          JACKS.pickedCount++;
+        }
+      }
+    }
+
+    if(JACKS.timer <= 0){
+      JACKS.state = 'catch';
+      JACKS.timer = JACKS.catchDur;
+    }
+  }
+  else if(JACKS.state === 'catch'){
+    // Ball falls, child catches it with right hand
+    const p = Math.max(0, Math.min(1, 1 - JACKS.timer / JACKS.catchDur));
+    ball.position.y = lerp(JACKS.ballPeakY * 0.7, JACKS.ballStartY + 0.15, p);
+    // Right arm comes down to catch
+    child.rArm.rotation.x = lerp(-1.8, 0.5, p);
+    child.rHand.position.y = lerp(0.55 * child.hs, 0.32 * child.hs, p);
+    child.rHand.position.z = lerp(-0.05, 0.06, p);
+    // Left hand returns to rest with jacks in it
+    child.lArm.rotation.x = lerp(child.lArm.rotation.x, 0.3, p);
+    child.lHand.position.y = lerp(child.lHand.position.y, 0.28 * child.hs, p);
+    child.lHand.rotation.z = 0;
+    child.torso.rotation.x = lerp(child.torso.rotation.x, 0.4, p);
+    child.head.rotation.x = lerp(0.3, -0.1, p);
+    // Ball bounce sound visual — small bounce near end
+    if(p > 0.85){
+      ball.position.y = JACKS.ballStartY + 0.15 + sin((p - 0.85) / 0.15 * PI) * 0.06;
+    }
+
+    if(JACKS.timer <= 0){
+      JACKS.state = 'pause';
+      JACKS.timer = 0.8 + rand(0, 0.6);
+      ball.position.y = JACKS.ballStartY + 0.15;
+    }
+  }
+  else if(JACKS.state === 'pause'){
+    // Brief pause — watcher reactions, reset for next toss
+    const p = Math.max(0, Math.min(1, 1 - JACKS.timer / 1.2));
+    // Rest pose
+    child.rArm.rotation.x = 0.3;
+    child.lArm.rotation.x = 0.3;
+    child.head.rotation.x = -0.1;
+    // Watcher nod/smile
+    if(JACKS.children[1]) JACKS.children[1].head.rotation.x = -0.1 + sin(t * 3) * 0.08;
+    if(JACKS.children[2]) JACKS.children[2].head.rotation.y = sin(t * 2) * 0.2;
+
+    if(JACKS.timer <= 0){
+      // Check if all jacks picked up at current level
+      const remaining = JACKS.jacks.filter(j => j.onGround).length;
+      if(remaining <= 0){
+        // Level up! Reset all jacks, increase pickup target
+        JACKS.pickupTarget = Math.min(JACKS.pickupTarget + 1, 5);
+        JACKS.jacks.forEach((j, i) => {
+          j.onGround = true;
+          j.mesh.visible = true;
+          j.mesh.position.x = cx + rand(-0.35, 0.35);
+          j.mesh.position.z = cz + rand(-0.35, 0.35);
+          j.mesh.rotation.y = rand(0, TAU);
+        });
+        JACKS.pickedCount = 0;
+      }
+      // Occasional "miss" — drop jacks back, reset level
+      if(Math.random() < 0.08){
+        JACKS.pickupTarget = 1;
+        JACKS.jacks.forEach(j => {
+          j.onGround = true;
+          j.mesh.visible = true;
+          j.mesh.position.x = cx + rand(-0.35, 0.35);
+          j.mesh.position.z = cz + rand(-0.35, 0.35);
+        });
+        JACKS.pickedCount = 0;
+      }
+      JACKS.state = 'toss';
+      JACKS.timer = JACKS.tossDur;
+    }
+  }
+
+  // Player collision with jacks children
+  const px = playerPos.x, pz = playerPos.z;
+  JACKS.children.forEach(npc => {
+    const nx = npc.group.position.x, nz = npc.group.position.z;
+    const dx = px - nx, dz = pz - nz;
+    const dist = Math.sqrt(dx*dx + dz*dz);
+    const minDist = 0.5;
+    if(dist < minDist && dist > 0.001){
+      const push = minDist - dist;
+      playerPos.x += (dx / dist) * push;
+      playerPos.z += (dz / dist) * push;
+      const ux = dx / dist, uz = dz / dist;
+      const vDotN = playerVelX * ux + playerVelZ * uz;
+      if(vDotN < 0){ playerVelX -= vDotN * ux; playerVelZ -= vDotN * uz; }
+    }
+  });
+}
+
+// ═══════════════════════════════════
+//  MARBLES
+// ═══════════════════════════════════
+const MARBS = {
+  cx: -4, cz: 9,
+  children: [],
+  marbles: [],          // {mesh, vx, vz, x, z, inCircle}
+  shooter: null,        // {mesh, vx, vz, x, z}
+  circleR: 0.55,
+  state: 'aim',         // aim → flick → rolling → collect → nextTurn → aim
+  timer: 0,
+  aimDur: 1.5,
+  flickDur: 0.25,
+  collectDur: 0.8,
+  turnChild: 0,
+  knockedOut: [],       // indices of marbles knocked out this turn
+};
+
+function buildKneelingChild(x, z, facingAngle){
+  const g = new THREE.Group();
+  const skinTones = [0x6B3A1F, 0x8B5A2B, 0x7A5535, 0xA0704C, 0x5C3310, 0xB07848];
+  const skinM = mat(skinTones[floor(Math.random()*skinTones.length)]);
+  const shirtColors = [0xE84C3D, 0x3498DB, 0x2ECC71, 0xF39C12, 0x9B59B6, 0xFF6B35, 0x45B7D1];
+  const shirtM = mat(shirtColors[floor(Math.random()*shirtColors.length)]);
+  const pantsM = mat([0x2C3E50, 0x3D2917, 0x34495E][floor(Math.random()*3)]);
+  const hs = rand(0.68, 0.82);
+
+  // Torso
+  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.12,0.34,7), shirtM);
+  torso.position.set(0, 0.38*hs, 0);
+  torso.rotation.x = 0.3;
+  g.add(torso);
+  // Thighs (horizontal-ish, kneeling)
+  const thighGeo = new THREE.CylinderGeometry(0.04,0.038,0.22,6);
+  const lThigh = new THREE.Mesh(thighGeo, pantsM);
+  lThigh.position.set(-0.06, 0.22*hs, 0.05); lThigh.rotation.x = 1.5;
+  g.add(lThigh);
+  const rThigh = new THREE.Mesh(thighGeo, pantsM);
+  rThigh.position.set(0.06, 0.22*hs, 0.05); rThigh.rotation.x = 1.5;
+  g.add(rThigh);
+  // Shins (tucked under)
+  const shinGeo = new THREE.CylinderGeometry(0.035,0.03,0.2,6);
+  const lShin = new THREE.Mesh(shinGeo, pantsM);
+  lShin.position.set(-0.06, 0.08, 0.18); lShin.rotation.x = 2.6;
+  g.add(lShin);
+  const rShin = new THREE.Mesh(shinGeo, pantsM);
+  rShin.position.set(0.06, 0.08, 0.18); rShin.rotation.x = 2.6;
+  g.add(rShin);
+  // Arms
+  const armGeo = new THREE.CylinderGeometry(0.028,0.022,0.2,6);
+  const lArm = new THREE.Mesh(armGeo, shirtM);
+  lArm.position.set(-0.14, 0.38*hs, 0);
+  g.add(lArm);
+  const rArm = new THREE.Mesh(armGeo, shirtM);
+  rArm.position.set(0.14, 0.38*hs, 0);
+  g.add(rArm);
+  // Hands
+  const handGeo = new THREE.SphereGeometry(0.024, 5, 4);
+  const lHand = new THREE.Mesh(handGeo, skinM);
+  lHand.position.set(-0.14, 0.24*hs, 0.06);
+  g.add(lHand);
+  const rHand = new THREE.Mesh(handGeo, skinM);
+  rHand.position.set(0.14, 0.24*hs, 0.06);
+  g.add(rHand);
+  // Thumb (for flicking)
+  const thumb = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.008, 0.04, 4), skinM);
+  thumb.position.set(0.14, 0.22*hs, 0.09);
+  thumb.rotation.x = -0.5;
+  g.add(thumb);
+  // Head
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.095,8,7), skinM);
+  head.position.set(0, 0.72*hs, 0.08);
+  g.add(head);
+  // Hair
+  const hair = new THREE.Mesh(
+    new THREE.SphereGeometry(0.1,8,6,0,TAU,0,PI*0.55),
+    mat([0x1a1008,0x0a0a0a,0x2a1a0a][floor(Math.random()*3)])
+  );
+  hair.position.set(0, 0.75*hs, 0.07);
+  g.add(hair);
+  // Shoes
+  [-0.06, 0.06].forEach(sx => {
+    const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.025, 0.08), mat(0x222222));
+    shoe.position.set(sx, 0.012, 0.26);
+    g.add(shoe);
+  });
+
+  g.position.set(x, 0, z);
+  g.rotation.y = facingAngle;
+  g.traverse(c => { if(c.isMesh) c.castShadow = false; });
+  scene.add(g);
+
+  return { group: g, torso, lArm, rArm, lHand, rHand, thumb, head, hs, phase: rand(0, TAU) };
+}
+
+function buildMarbles(){
+  const cx = MARBS.cx, cz = MARBS.cz, cr = MARBS.circleR;
+
+  // Chalk circle on the ground
+  const segments = 48;
+  const circleGeo = new THREE.BufferGeometry();
+  const circVerts = [];
+  for(let i = 0; i <= segments; i++){
+    const a = (i / segments) * TAU;
+    const a2 = ((i + 1) / segments) * TAU;
+    const rInner = cr - 0.03, rOuter = cr + 0.03;
+    circVerts.push(
+      cx + cos(a)*rInner, 0.006, cz + sin(a)*rInner,
+      cx + cos(a)*rOuter, 0.006, cz + sin(a)*rOuter,
+      cx + cos(a2)*rOuter, 0.006, cz + sin(a2)*rOuter,
+      cx + cos(a)*rInner, 0.006, cz + sin(a)*rInner,
+      cx + cos(a2)*rOuter, 0.006, cz + sin(a2)*rOuter,
+      cx + cos(a2)*rInner, 0.006, cz + sin(a2)*rInner,
+    );
+  }
+  circleGeo.setAttribute('position', new THREE.Float32BufferAttribute(circVerts, 3));
+  const circleMesh = new THREE.Mesh(circleGeo, mat(0xFFFFFF, {transparent:true, opacity:0.25, rough:1}));
+  scene.add(circleMesh);
+
+  // 12 colorful marbles inside the circle
+  const marbleColors = [0xFF4444,0x4488FF,0x44CC44,0xFFCC00,0xFF8800,0xCC44FF,
+                        0x44DDDD,0xFF6699,0x88FF44,0xFFFFFF,0x2266AA,0xDD4488];
+  const marbleGeo = new THREE.SphereGeometry(0.02, 6, 5);
+  for(let i = 0; i < 12; i++){
+    const angle = rand(0, TAU);
+    const r = rand(0, cr * 0.7);
+    const mx = cx + cos(angle) * r;
+    const mz = cz + sin(angle) * r;
+    const mesh = new THREE.Mesh(marbleGeo, mat(marbleColors[i], {metalness:0.1, rough:0.2}));
+    mesh.position.set(mx, 0.02, mz);
+    mesh.castShadow = false;
+    scene.add(mesh);
+    MARBS.marbles.push({ mesh, vx:0, vz:0, x: mx, z: mz, inCircle: true });
+  }
+
+  // Shooter marble (larger, glass-like)
+  const shooterMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(0.03, 8, 6),
+    mat(0x88CCFF, { metalness: 0.15, rough: 0.15, transparent: true, opacity: 0.85 })
+  );
+  shooterMesh.position.set(cx, 0.03, cz + cr + 0.15);
+  shooterMesh.castShadow = false;
+  scene.add(shooterMesh);
+  MARBS.shooter = { mesh: shooterMesh, vx: 0, vz: 0, x: shooterMesh.position.x, z: shooterMesh.position.z };
+
+  // 3 children kneeling around the circle
+  const childData = [
+    { x: cx, z: cz + cr + 0.55, rot: PI },       // south side, facing north
+    { x: cx - cr - 0.5, z: cz - 0.15, rot: PI * 0.4 },  // west side
+    { x: cx + cr + 0.55, z: cz + 0.1, rot: -PI * 0.4 }, // east side
+  ];
+  childData.forEach(cd => {
+    const c = buildKneelingChild(cd.x, cd.z, cd.rot);
+    MARBS.children.push(c);
+  });
+
+  MARBS.state = 'aim';
+  MARBS.timer = MARBS.aimDur;
+  MARBS.turnChild = 0;
+}
+
+function animateMarbles(dt){
+  const cx = MARBS.cx, cz = MARBS.cz, cr = MARBS.circleR;
+  const t = performance.now() / 1000;
+  const active = MARBS.children[MARBS.turnChild];
+  if(!active) return;
+
+  // Idle animation for non-active children
+  MARBS.children.forEach((c, ci) => {
+    if(ci === MARBS.turnChild) return;
+    const wt = t + ci * 2.1;
+    c.head.rotation.x = -0.15 + sin(wt * 0.4) * 0.06; // looking at game
+    c.head.rotation.y = sin(wt * 0.3 + ci) * 0.12;
+    c.group.position.y = sin(wt * 1.0) * 0.003;
+    c.torso.rotation.x = 0.3 + sin(wt * 0.5) * 0.03;
+  });
+
+  MARBS.timer -= dt;
+  const shooter = MARBS.shooter;
+
+  if(MARBS.state === 'aim'){
+    // Active child positions hand near shooter, small aim adjustments
+    const p = Math.max(0, Math.min(1, 1 - MARBS.timer / MARBS.aimDur));
+    // Hand near ground, near shooter
+    active.rArm.rotation.x = 1.2 + sin(t * 2) * 0.1;
+    active.rHand.position.y = 0.06;
+    active.rHand.position.z = 0.18 + sin(t * 1.5) * 0.02;
+    active.thumb.rotation.x = -0.8 + sin(t * 3) * 0.15; // coiling thumb
+    // Lean in
+    active.torso.rotation.x = 0.4 + sin(t * 0.8) * 0.05;
+    active.head.rotation.x = -0.25; // looking down at marbles
+    // Shooter stays in front of child
+    shooter.mesh.position.set(
+      active.group.position.x + sin(active.group.rotation.y) * 0.25,
+      0.03,
+      active.group.position.z - cos(active.group.rotation.y) * 0.25
+    );
+    shooter.x = shooter.mesh.position.x;
+    shooter.z = shooter.mesh.position.z;
+
+    if(MARBS.timer <= 0){
+      // Pick a target marble
+      const targets = MARBS.marbles.filter(m => m.inCircle);
+      if(targets.length === 0){
+        // Reset all marbles
+        MARBS.marbles.forEach((m, i) => {
+          const angle = rand(0, TAU);
+          const r = rand(0, cr * 0.7);
+          m.x = cx + cos(angle) * r;
+          m.z = cz + sin(angle) * r;
+          m.mesh.position.set(m.x, 0.02, m.z);
+          m.inCircle = true;
+          m.vx = 0; m.vz = 0;
+        });
+      }
+      // Calculate flick direction toward center cluster
+      const dirX = cx - shooter.x;
+      const dirZ = cz - shooter.z;
+      const dirLen = Math.sqrt(dirX*dirX + dirZ*dirZ);
+      const speed = rand(2.5, 4.0);
+      shooter.vx = (dirX / dirLen) * speed + rand(-0.3, 0.3);
+      shooter.vz = (dirZ / dirLen) * speed + rand(-0.3, 0.3);
+      MARBS.state = 'flick';
+      MARBS.timer = MARBS.flickDur;
+      MARBS.knockedOut = [];
+    }
+  }
+  else if(MARBS.state === 'flick'){
+    // Thumb flick animation
+    const p = Math.max(0, Math.min(1, 1 - MARBS.timer / MARBS.flickDur));
+    // Thumb snaps forward
+    if(p < 0.4){
+      active.thumb.rotation.x = lerp(-0.8, 1.2, p / 0.4);
+    } else {
+      active.thumb.rotation.x = lerp(1.2, 0, (p - 0.4) / 0.6);
+    }
+    active.rHand.position.z = 0.18 + p * 0.06;
+
+    if(MARBS.timer <= 0){
+      MARBS.state = 'rolling';
+      MARBS.timer = 2.0; // max roll time
+    }
+  }
+  else if(MARBS.state === 'rolling'){
+    // Physics: shooter and marbles move with friction and collisions
+    const friction = 3.0;
+
+    // Update shooter position
+    shooter.x += shooter.vx * dt;
+    shooter.z += shooter.vz * dt;
+    // Friction
+    const sSpeed = Math.sqrt(shooter.vx*shooter.vx + shooter.vz*shooter.vz);
+    if(sSpeed > 0.01){
+      const fric = Math.min(friction * dt, sSpeed);
+      shooter.vx -= (shooter.vx / sSpeed) * fric;
+      shooter.vz -= (shooter.vz / sSpeed) * fric;
+    } else {
+      shooter.vx = 0; shooter.vz = 0;
+    }
+    shooter.mesh.position.set(shooter.x, 0.03, shooter.z);
+
+    // Shooter-marble collisions
+    MARBS.marbles.forEach((m, mi) => {
+      const dx = shooter.x - m.x;
+      const dz = shooter.z - m.z;
+      const dist = Math.sqrt(dx*dx + dz*dz);
+      const minD = 0.05; // shooter radius + marble radius
+      if(dist < minD && dist > 0.001){
+        // Elastic-ish collision
+        const nx = dx / dist, nz = dz / dist;
+        const relVx = shooter.vx - m.vx, relVz = shooter.vz - m.vz;
+        const dot = relVx * nx + relVz * nz;
+        if(dot < 0){
+          // Transfer momentum (shooter is heavier)
+          shooter.vx -= dot * nx * 0.4;
+          shooter.vz -= dot * nz * 0.4;
+          m.vx += dot * nx * -0.8;
+          m.vz += dot * nz * -0.8;
+        }
+        // Separate
+        const overlap = minD - dist;
+        m.x -= nx * overlap * 0.7;
+        m.z -= nz * overlap * 0.7;
+        shooter.x += nx * overlap * 0.3;
+        shooter.z += nz * overlap * 0.3;
+      }
+    });
+
+    // Marble-marble collisions + update positions
+    let anyMoving = false;
+    MARBS.marbles.forEach((m, mi) => {
+      m.x += m.vx * dt;
+      m.z += m.vz * dt;
+      const mSpeed = Math.sqrt(m.vx*m.vx + m.vz*m.vz);
+      if(mSpeed > 0.01){
+        const fric = Math.min(friction * 1.2 * dt, mSpeed);
+        m.vx -= (m.vx / mSpeed) * fric;
+        m.vz -= (m.vz / mSpeed) * fric;
+        anyMoving = true;
+      } else {
+        m.vx = 0; m.vz = 0;
+      }
+      m.mesh.position.set(m.x, 0.02, m.z);
+
+      // Check if knocked out of circle
+      const fromCenter = Math.sqrt((m.x - cx)*(m.x - cx) + (m.z - cz)*(m.z - cz));
+      if(m.inCircle && fromCenter > cr){
+        m.inCircle = false;
+        MARBS.knockedOut.push(mi);
+      }
+
+      // Marble-marble collision
+      for(let mj = mi + 1; mj < MARBS.marbles.length; mj++){
+        const o = MARBS.marbles[mj];
+        const ddx = m.x - o.x, ddz = m.z - o.z;
+        const dd = Math.sqrt(ddx*ddx + ddz*ddz);
+        const minDD = 0.04;
+        if(dd < minDD && dd > 0.001){
+          const nnx = ddx/dd, nnz = ddz/dd;
+          const rv = (m.vx-o.vx)*nnx + (m.vz-o.vz)*nnz;
+          if(rv < 0){
+            m.vx -= rv * nnx * 0.5;
+            m.vz -= rv * nnz * 0.5;
+            o.vx += rv * nnx * 0.5;
+            o.vz += rv * nnz * 0.5;
+          }
+          const sep = (minDD - dd) * 0.5;
+          m.x += nnx * sep; m.z += nnz * sep;
+          o.x -= nnx * sep; o.z -= nnz * sep;
+        }
+      }
+    });
+
+    if(sSpeed < 0.01) anyMoving = false; // include shooter
+    else anyMoving = true;
+
+    // Children watch the rolling (heads track shooter)
+    MARBS.children.forEach(c => {
+      const dx = shooter.x - c.group.position.x;
+      const dz = shooter.z - c.group.position.z;
+      c.head.rotation.y = Math.atan2(dx, dz) - c.group.rotation.y;
+    });
+
+    if(!anyMoving || MARBS.timer <= 0){
+      if(MARBS.knockedOut.length > 0){
+        MARBS.state = 'collect';
+        MARBS.timer = MARBS.collectDur;
+      } else {
+        MARBS.state = 'nextTurn';
+        MARBS.timer = 0.6;
+      }
+    }
+  }
+  else if(MARBS.state === 'collect'){
+    // Active child reaches to pick up knocked-out marbles
+    const p = Math.max(0, Math.min(1, 1 - MARBS.timer / MARBS.collectDur));
+    active.lArm.rotation.x = lerp(0.3, 1.5, p < 0.5 ? p/0.5 : 1 - (p-0.5)/0.5);
+    active.lHand.position.y = lerp(0.24*active.hs, 0.04, p < 0.5 ? p/0.5 : 1 - (p-0.5)/0.5);
+    active.torso.rotation.x = 0.3 + sin(p * PI) * 0.2;
+    // Hide collected marbles gradually (child pockets them)
+    if(p > 0.5){
+      MARBS.knockedOut.forEach(mi => {
+        const m = MARBS.marbles[mi];
+        if(m) m.mesh.visible = false;
+      });
+    }
+
+    if(MARBS.timer <= 0){
+      // Nod with satisfaction
+      active.head.rotation.x = -0.3;
+      MARBS.state = 'nextTurn';
+      MARBS.timer = 0.5 + rand(0, 0.4);
+    }
+  }
+  else if(MARBS.state === 'nextTurn'){
+    // Rotate to next child
+    active.rArm.rotation.x = 0.3;
+    active.lArm.rotation.x = 0.3;
+    active.lHand.position.y = 0.24 * active.hs;
+    active.rHand.position.y = 0.24 * active.hs;
+    active.rHand.position.z = 0.06;
+    active.thumb.rotation.x = -0.5;
+    active.torso.rotation.x = 0.3;
+    active.head.rotation.x = -0.15;
+
+    if(MARBS.timer <= 0){
+      // Respawn hidden marbles back randomly if too few remain
+      const visible = MARBS.marbles.filter(m => m.mesh.visible && m.inCircle).length;
+      if(visible < 4){
+        MARBS.marbles.forEach(m => {
+          if(!m.mesh.visible || !m.inCircle){
+            const angle = rand(0, TAU);
+            const r = rand(0, cr * 0.6);
+            m.x = cx + cos(angle) * r;
+            m.z = cz + sin(angle) * r;
+            m.mesh.position.set(m.x, 0.02, m.z);
+            m.mesh.visible = true;
+            m.inCircle = true;
+            m.vx = 0; m.vz = 0;
+          }
+        });
+      }
+      MARBS.turnChild = (MARBS.turnChild + 1) % MARBS.children.length;
+      MARBS.knockedOut = [];
+      MARBS.state = 'aim';
+      MARBS.timer = MARBS.aimDur + rand(0, 0.5);
+      // Position shooter near new active child
+      const next = MARBS.children[MARBS.turnChild];
+      if(next){
+        shooter.x = next.group.position.x + sin(next.group.rotation.y) * 0.25;
+        shooter.z = next.group.position.z - cos(next.group.rotation.y) * 0.25;
+        shooter.mesh.position.set(shooter.x, 0.03, shooter.z);
+        shooter.vx = 0; shooter.vz = 0;
+      }
+    }
+  }
+
+  // Player collision with marble children
+  const px = playerPos.x, pz = playerPos.z;
+  MARBS.children.forEach(npc => {
+    const nx = npc.group.position.x, nz = npc.group.position.z;
+    const dx = px - nx, dz = pz - nz;
+    const dist = Math.sqrt(dx*dx + dz*dz);
+    const minDist = 0.5;
+    if(dist < minDist && dist > 0.001){
+      const push = minDist - dist;
+      playerPos.x += (dx / dist) * push;
+      playerPos.z += (dz / dist) * push;
+      const ux = dx / dist, uz = dz / dist;
+      const vDotN = playerVelX * ux + playerVelZ * uz;
+      if(vDotN < 0){ playerVelX -= vDotN * ux; playerVelZ -= vDotN * uz; }
+    }
+  });
+}
+
+// ═══════════════════════════════════
 //  COLLISION OBSTACLES
 // ═══════════════════════════════════
 
@@ -2020,7 +3264,7 @@ function buildDistantStreet(){
       if(isX){
         const b=new THREE.Mesh(new THREE.BoxGeometry(bw,bh,bd), mat(bCol,{rough:0.9}));
         b.position.set(side.fx+t, bh/2, side.fz+outDir*6.5);
-        b.castShadow=true; scene.add(b);
+        scene.add(b);
         const wM=mat(0xffcc66,{rough:0.5,emissive:0xffcc66,emissiveIntensity:0.1,transparent:true,opacity:0.6});
         for(let wy=2;wy<bh-1;wy+=2.2) for(let wx=-bw/2+0.8;wx<bw/2-0.5;wx+=1.3)
           if(Math.random()>0.25){
@@ -2031,7 +3275,7 @@ function buildDistantStreet(){
       } else {
         const b=new THREE.Mesh(new THREE.BoxGeometry(bd,bh,bw), mat(bCol,{rough:0.9}));
         b.position.set(side.fx+outDir*6.5, bh/2, side.fz+t);
-        b.castShadow=true; scene.add(b);
+        scene.add(b);
         const wM=mat(0xffcc66,{rough:0.5,emissive:0xffcc66,emissiveIntensity:0.1,transparent:true,opacity:0.6});
         for(let wy=2;wy<bh-1;wy+=2.2) for(let wz=-bw/2+0.8;wz<bw/2-0.5;wz+=1.3)
           if(Math.random()>0.25){
@@ -2216,6 +3460,8 @@ function buildMarchGroup(){
         const p=marchPosFromPerim(m.perim, m.rowOff);
         m.group.position.set(p.x,0,p.z);
         m.group.rotation.y=p.rot;
+        // Marchers don't cast shadows (huge perf savings — 160×12 meshes)
+        m.group.traverse(c => { if(c.isMesh) c.castShadow = false; });
         scene.add(m.group);
         marchGroup.push(m);
       }
@@ -2228,23 +3474,24 @@ const MARCH_AVOID_PUSH = 2.5; // strength of sideways push
 
 function animateMarch(dt){
   const px = playerPos.x, pz = playerPos.z;
-  marchGroup.forEach(m=>{
+  const camX = camera.position.x, camZ = camera.position.z;
+  const t = performance.now() / 1000;
+  for(let mi = 0; mi < marchGroup.length; mi++){
+    const m = marchGroup[mi];
     m.perim = ((m.perim + m.speed * dt) % LOOP_PERIM + LOOP_PERIM) % LOOP_PERIM;
     const p=marchPosFromPerim(m.perim, m.rowOff);
     let mx = p.x, mz = p.z, mRot = p.rot;
 
     // --- crowd avoidance: marchers flow around the player ---
     const dx = mx - px, dz = mz - pz;
-    const dist = Math.sqrt(dx*dx + dz*dz);
+    const distSq = dx*dx + dz*dz;
+    const dist = distSq < MARCH_AVOID_R * MARCH_AVOID_R ? Math.sqrt(distSq) : 999;
     if(dist < MARCH_AVOID_R && dist > 0.01){
-      // Smooth falloff: strongest when closest
       const strength = 1.0 - (dist / MARCH_AVOID_R);
       const push = strength * strength * MARCH_AVOID_PUSH;
-      // Push perpendicular to march direction so they sidestep, plus a bit radially
       const nx = dx / dist, nz = dz / dist;
       mx += nx * push;
       mz += nz * push;
-      // Slightly rotate to face around player (subtle)
       const avoidAngle = Math.atan2(nx, nz);
       let angleDiff = avoidAngle - mRot;
       while(angleDiff > PI) angleDiff -= TAU;
@@ -2266,22 +3513,35 @@ function animateMarch(dt){
     m.group.position.z = m._prevZ;
     m.group.rotation.y = m._prevRot;
 
-    const t=performance.now()/1000, ph=m.phase;
-    m.legs.forEach((leg,li)=>{ leg.rotation.x=sin(t*3.2+ph)*m.walkAmp*(li===0?1:-1); });
-    if(!m.hasSign&&!m.hasFist){
-      m.lArm.rotation.x=sin(t*3.2+ph)*0.2;
-      m.rArm.rotation.x=-sin(t*3.2+ph)*0.2;
-    } else if(m.hasSign){ m.lArm.rotation.x=sin(t*3.2+ph)*0.15;
-    } else if(m.hasFist){ m.rArm.rotation.x=-2.9+sin(t*1.5+m.chantPhase)*0.12; }
-    m.group.position.y=sin(t*6.4+ph)*0.015;
-    m.headMesh.rotation.y=sin(t*0.7+m.headTurnPhase)*0.15;
+    // Distance-based LOD: skip limb animations for distant marchers
+    const cdx = m._prevX - camX, cdz = m._prevZ - camZ;
+    const camDistSq = cdx*cdx + cdz*cdz;
+    if(camDistSq > 400){ // >20 units from camera — freeze limbs, just position
+      m.group.position.y = 0;
+      continue;
+    }
+
+    const ph = m.phase;
+    if(camDistSq < 225){ // <15 units — full animation
+      m.legs.forEach((leg,li)=>{ leg.rotation.x=sin(t*3.2+ph)*m.walkAmp*(li===0?1:-1); });
+      if(!m.hasSign&&!m.hasFist){
+        m.lArm.rotation.x=sin(t*3.2+ph)*0.2;
+        m.rArm.rotation.x=-sin(t*3.2+ph)*0.2;
+      } else if(m.hasSign){ m.lArm.rotation.x=sin(t*3.2+ph)*0.15;
+      } else if(m.hasFist){ m.rArm.rotation.x=-2.9+sin(t*1.5+m.chantPhase)*0.12; }
+      m.group.position.y=sin(t*6.4+ph)*0.015;
+      m.headMesh.rotation.y=sin(t*0.7+m.headTurnPhase)*0.15;
+    } else { // 15-20 units — reduced animation (legs only)
+      m.legs.forEach((leg,li)=>{ leg.rotation.x=sin(t*3.2+ph)*m.walkAmp*(li===0?1:-1); });
+      m.group.position.y=0;
+    }
 
     // When close to player, marchers glance at them
     if(dist < MARCH_AVOID_R * 1.3){
       const glance = Math.atan2(px - m._prevX, pz - m._prevZ) - m._prevRot;
       m.headMesh.rotation.y = clamp(glance, -0.6, 0.6);
     }
-  });
+  }
 }
 
 function registerObstacles(){
@@ -2304,6 +3564,14 @@ function registerObstacles(){
   // Community building (children walk into this)
   // bldgX=15.5, bldgW=4, bldgD=5 → x:[13.5,17.5], z:[cz-2.5, cz+2.5]
   obstacles.push({minX:13.5, maxX:17.5, minZ:BFP.cz-2.5, maxZ:BFP.cz+2.5, topY:5.0, type:'wall'});
+
+  // Fences (thin walls along z = ±14, x: -18 to 18)
+  obstacles.push({minX:-18, maxX:18, minZ:-14.3, maxZ:-13.7, topY:2.5, type:'fence'});
+  obstacles.push({minX:-18, maxX:18, minZ:13.7,  maxZ:14.3,  topY:2.5, type:'fence'});
+
+  // Turners as static NPCs
+  staticNPCPositions.push({x: -TURNER_DIST, z: 0, r: 0.4});
+  staticNPCPositions.push({x:  TURNER_DIST, z: 0, r: 0.4});
 }
 
 // ═══════════════════════════════════
@@ -2871,6 +4139,9 @@ function update(dt){
     tickParticles(dt);
     animateMarch(dt);
     animateBreakfast(dt);
+    animateHopscotch(dt);
+    animateJacks(dt);
+    animateMarbles(dt);
 
     // HUD updates
     $score.textContent = score;
@@ -2954,6 +4225,23 @@ function update(dt){
       // Kill velocity into obstacle
       const nx = dx / (dist > 0.001 ? dist : 1);
       const nz = dz / (dist > 0.001 ? dist : 1);
+      const vDotN = playerVelX * nx + playerVelZ * nz;
+      if(vDotN < 0){ playerVelX -= vDotN * nx; playerVelZ -= vDotN * nz; }
+    }
+  }
+
+  // Static NPC collision (spectators, jazz performers, turners)
+  for(let i = 0; i < staticNPCPositions.length; i++){
+    const npc = staticNPCPositions[i];
+    const dx = playerPos.x - npc.x;
+    const dz = playerPos.z - npc.z;
+    const dist = Math.sqrt(dx*dx + dz*dz);
+    const minDist = PLAYER_RADIUS + npc.r;
+    if(dist < minDist && dist > 0.001){
+      const push = minDist - dist;
+      playerPos.x += (dx / dist) * push;
+      playerPos.z += (dz / dist) * push;
+      const nx = dx / dist, nz = dz / dist;
       const vDotN = playerVelX * nx + playerVelZ * nz;
       if(vDotN < 0){ playerVelX -= vDotN * nx; playerVelZ -= vDotN * nz; }
     }
@@ -3101,6 +4389,9 @@ function update(dt){
   tickMusicNotes(dt);
   animateMarch(dt);
   animateBreakfast(dt);
+  animateHopscotch(dt);
+  animateJacks(dt);
+  animateMarbles(dt);
   // Proximity-based jazz volume (inverse square law outside small radius)
   if(jazzAudio){
     const pcx = -1.5, pcz = -9.55;
@@ -3150,6 +4441,9 @@ buildMarchGroup();
 buildSpectators();
 buildJazzPerformers();
 buildBreakfastProgram();
+buildHopscotch();
+buildJacks();
+buildMarbles();
 registerObstacles();
 initGameObjects();
 showMenu();
