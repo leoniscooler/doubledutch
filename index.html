@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Black Joy — Double Dutch 3D</title>
+<title>Black Joy</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#000;overflow:hidden;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;user-select:none}
@@ -52,6 +52,7 @@ canvas{display:block;width:100vw;height:100vh}
   <div id="diffLabel" class="hud-panel" style="display:none"></div>
   <div id="judgment"></div>
   <div id="prompt"></div>
+  <div id="carPrompt" style="position:absolute;bottom:90px;left:50%;transform:translateX(-50%);font-size:16px;color:rgba(255,215,0,0.85);display:none;text-shadow:0 0 8px rgba(255,215,0,0.4);font-weight:bold;letter-spacing:1px;pointer-events:none"></div>
   <div id="centerMsg">
     <h1>BLACK JOY</h1>
     <div class="sub">Double Dutch 3D — Rhythm &amp; Rope Simulator</div>
@@ -62,6 +63,14 @@ canvas{display:block;width:100vw;height:100vh}
   </div>
 </div>
 <div id="nowPlaying"></div>
+<div id="carHud" style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);display:none;text-align:center;z-index:20;pointer-events:none">
+  <div style="background:rgba(0,0,0,.6);border-radius:10px;padding:8px 20px;backdrop-filter:blur(4px);color:#fff;font-size:13px">
+    <span id="carSpeed" style="color:#FFD700;font-size:18px;font-weight:bold">0</span>
+    <span style="color:#aaa;font-size:11px"> MPH</span>
+    &nbsp;&nbsp;|&nbsp;&nbsp;
+    <span style="color:#888;font-size:12px">W/S — Gas/Brake &nbsp;|&nbsp; A/D — Steer &nbsp;|&nbsp; E — Exit</span>
+  </div>
+</div>
 <button id="menuBtn">ESC — MENU</button>
 
 <script type="importmap">
@@ -590,6 +599,8 @@ function playJazzTrack(idx){
     $np.style.opacity = '1';
     setTimeout(() => { $np.style.opacity = '0'; }, 5000);
   }
+  // 3D floating text above musicians
+  showSongLabel3D('♫ ' + track.title, 'Louis Armstrong');
 
   // When song ends, play next
   jazzAudio.onended = () => {
@@ -683,10 +694,19 @@ const MAT = {
   grass:     mat(0x2a4a20, {rough:0.95}),
   tree:      mat(0x1a3a14, {rough:0.9}),
   trunk:     mat(0x5a3a20, {rough:0.9}),
-  car1:      mat(0x3366cc, {rough:0.3, metal:0.5}),
-  car2:      mat(0xcc3333, {rough:0.3, metal:0.5}),
-  car3:      mat(0x444444, {rough:0.3, metal:0.5}),
-  tire:      mat(0x222222, {rough:0.9}),
+  car1:      mat(0x2255aa, {rough:0.25, metal:0.65}),  // Area 51 blue
+  car2:      mat(0xcc3322, {rough:0.25, metal:0.65}),  // Hot Pepper Red
+  car3:      mat(0x2a2a2a, {rough:0.25, metal:0.70}),  // Shadow Black
+  tire:      mat(0x1a1a1a, {rough:0.95}),
+  tireRim:   mat(0xaaaaaa, {rough:0.15, metal:0.9}),
+  headlight: mat(0xffffee, {rough:0.1, metal:0.2, emissive:0xffffcc, emissiveIntensity:0.4, transparent:true, opacity:0.9}),
+  taillight: mat(0xcc0000, {rough:0.3, metal:0.1, emissive:0xcc0000, emissiveIntensity:0.5}),
+  turnSignal: mat(0xff8800, {rough:0.3, emissive:0xff8800, emissiveIntensity:0.3}),
+  chrome:    mat(0xcccccc, {rough:0.05, metal:1.0}),
+  carGlass:  mat(0x334466, {rough:0.05, metal:0.2, transparent:true, opacity:0.35}),
+  carTrim:   mat(0x111111, {rough:0.5, metal:0.3}),
+  undercar:  mat(0x1a1a1a, {rough:0.9}),
+  licPlate:  mat(0xeeeedd, {rough:0.7}),
   rope1:     mat(0x3498db, {rough:0.6}),
   rope2:     mat(0xe74c3c, {rough:0.6}),
   // Character materials
@@ -773,11 +793,11 @@ function buildEnvironment(){
   // Buildings (background)
   buildBuildings();
 
-  // Parked cars
-  buildCar(-10, 0, -12, 0, MAT.car1);
-  buildCar(-6, 0, -12, 0.1, MAT.car2);
-  buildCar(8, 0, 12, PI, MAT.car3);
-  buildCar(12, 0, 12, PI+0.05, MAT.car1);
+  // Parked cars (spaced apart, away from fences at z=±14)
+  buildCar(-12, 0, -9, 0, MAT.car1);
+  buildCar(-5, 0, -9, 0.1, MAT.car2);
+  buildCar(5, 0, 9, PI, MAT.car3);
+  buildCar(12, 0, 9, PI+0.05, MAT.car1);
 
   // Trees (keep inside the loop, away from march streets)
   for(let i=0; i<8; i++){
@@ -826,33 +846,389 @@ function buildBuildings(){
 
 function buildCar(x, y, z, rot, bodyMat){
   const car = new THREE.Group();
-  // Body
-  const body = new THREE.Mesh(new THREE.BoxGeometry(2, 0.8, 4), bodyMat);
-  body.position.y = 0.65;
-  body.castShadow = true;
-  car.add(body);
-  // Roof
-  const roof = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.6, 2.2), bodyMat);
-  roof.position.y = 1.25;
-  roof.castShadow = true;
-  car.add(roof);
-  // Wheels
-  const wheelGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.2, 12);
-  [[-0.9,0.3,-1.3],[0.9,0.3,-1.3],[-0.9,0.3,1.3],[0.9,0.3,1.3]].forEach(p => {
-    const w = new THREE.Mesh(wheelGeo, MAT.tire);
-    w.position.set(...p);
-    w.rotation.z = PI/2;
-    car.add(w);
-  });
-  // Windshield
-  const glassMat = mat(0x446688, {rough:0.1, metal:0.3, transparent:true, opacity:0.4});
-  const glass = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.5), glassMat);
-  glass.position.set(0, 1.3, 1.11);
-  car.add(glass);
 
+  // Ford Bronco proportions — boxy, tall, aggressive
+  const bW = 2.2, bH = 1.0, bL = 4.4;   // body width, body (lower) height, length
+  const liftY = 0.55;                      // ground clearance (lifted)
+  const cabH = 0.72;                       // cabin height
+  const roofY = liftY + bH + cabH;         // ~2.27
+
+  // ── Frame / lower body (boxy) ──
+  const bodyLower = new THREE.Mesh(new THREE.BoxGeometry(bW, bH, bL), bodyMat);
+  bodyLower.position.y = liftY + bH/2;
+  bodyLower.castShadow = true;
+  car.add(bodyLower);
+
+  // ── Underbody skid plate ──
+  const skid = new THREE.Mesh(new THREE.BoxGeometry(bW-0.2, 0.06, bL-0.4), MAT.undercar);
+  skid.position.y = liftY - 0.02;
+  car.add(skid);
+
+  // ── Flat hood ──
+  const hood = new THREE.Mesh(new THREE.BoxGeometry(bW-0.1, 0.06, 1.6), bodyMat);
+  hood.position.set(0, liftY+bH+0.03, 1.2);
+  hood.castShadow = true;
+  car.add(hood);
+  // Hood power-dome (subtle raised center)
+  const hoodDome = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.04, 1.0), bodyMat);
+  hoodDome.position.set(0, liftY+bH+0.08, 1.2);
+  car.add(hoodDome);
+  // Hood seam
+  const hoodSeam = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.005, 1.5), MAT.carTrim);
+  hoodSeam.position.set(0, liftY+bH+0.07, 1.2);
+  car.add(hoodSeam);
+
+  // ── Cabin (tall, boxy, flat roof — signature Bronco) ──
+  const cabin = new THREE.Mesh(new THREE.BoxGeometry(bW-0.12, cabH, 2.3), bodyMat);
+  cabin.position.set(0, liftY+bH+cabH/2, -0.25);
+  cabin.castShadow = true;
+  car.add(cabin);
+
+  // ── Removable roof panel look (contrasting top) ──
+  const roofPanel = new THREE.Mesh(new THREE.BoxGeometry(bW-0.18, 0.06, 2.25), MAT.carTrim);
+  roofPanel.position.set(0, roofY+0.03, -0.25);
+  car.add(roofPanel);
+
+  // ── Roof rack (Bronco sport bars) ──
+  const rackMat = MAT.carTrim;
+  [-0.85, 0.85].forEach(sx => {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 2.0), rackMat);
+    rail.position.set(sx, roofY+0.08, -0.25);
+    car.add(rail);
+  });
+  [-0.5, 0.5].forEach(offZ => {
+    const cross = new THREE.Mesh(new THREE.BoxGeometry(1.65, 0.04, 0.05), rackMat);
+    cross.position.set(0, roofY+0.1, -0.25+offZ);
+    car.add(cross);
+  });
+
+  // ── Fender flares (wide, boxy — Bronco hallmark) ──
+  const flareMat = MAT.carTrim;
+  const flareGeo = new THREE.BoxGeometry(0.15, 0.45, 0.95);
+  [[-1, -1.35], [-1, 1.35], [1, -1.35], [1, 1.35]].forEach(([side, fz]) => {
+    const flare = new THREE.Mesh(flareGeo, flareMat);
+    flare.position.set(side*(bW/2+0.06), liftY+bH/2, fz);
+    car.add(flare);
+  });
+
+  // ── Wheels (big off-road tires + Bronco alloy rims) ──
+  const tireR = 0.38, tireT = 0.14;   // bigger tires for Bronco
+  const tireGeo = new THREE.TorusGeometry(tireR, tireT, 10, 18);
+  const rimGeo = new THREE.CylinderGeometry(0.28, 0.28, 0.18, 14);
+  const hubGeo = new THREE.CylinderGeometry(0.08, 0.08, 0.20, 8);
+  const spokeGeo = new THREE.BoxGeometry(0.04, 0.20, 0.22);
+  const wY = tireR + tireT + 0.02;
+  [[-1.14,wY,-1.35],[1.14,wY,-1.35],[-1.14,wY,1.35],[1.14,wY,1.35]].forEach(p => {
+    const tire = new THREE.Mesh(tireGeo, MAT.tire);
+    tire.position.set(...p); tire.rotation.z = PI/2; tire.rotation.y = PI/2;
+    car.add(tire);
+    const rim = new THREE.Mesh(rimGeo, MAT.tireRim);
+    rim.position.set(...p); rim.rotation.z = PI/2;
+    car.add(rim);
+    const hub = new THREE.Mesh(hubGeo, MAT.chrome);
+    hub.position.set(...p); hub.rotation.z = PI/2;
+    car.add(hub);
+    for(let s=0; s<6; s++){
+      const spoke = new THREE.Mesh(spokeGeo, MAT.tireRim);
+      const a = (s/6)*TAU, sr = 0.16;
+      spoke.position.set(p[0], p[1]+sin(a)*sr, p[2]+cos(a)*sr);
+      spoke.rotation.x = a; spoke.rotation.z = PI/2;
+      car.add(spoke);
+    }
+  });
+
+  // ── Front windshield (nearly vertical — Bronco style) ──
+  const fwGlass = new THREE.Mesh(new THREE.PlaneGeometry(bW-0.35, 0.62), MAT.carGlass);
+  fwGlass.position.set(0, liftY+bH+cabH*0.5+0.05, 0.88);
+  fwGlass.rotation.x = -0.12;
+  car.add(fwGlass);
+
+  // ── Rear window (vertical) ──
+  const rwGlass = new THREE.Mesh(new THREE.PlaneGeometry(bW-0.4, 0.55), MAT.carGlass);
+  rwGlass.position.set(0, liftY+bH+cabH*0.5+0.03, -1.38);
+  rwGlass.rotation.x = 0.08; rwGlass.rotation.y = PI;
+  car.add(rwGlass);
+
+  // ── Side windows (2 per side) ──
+  [-1, 1].forEach(side => {
+    const swFront = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 0.48), MAT.carGlass);
+    swFront.position.set(side*(bW/2-0.02), liftY+bH+cabH*0.5, 0.25);
+    swFront.rotation.y = side*PI/2;
+    car.add(swFront);
+    const swRear = new THREE.Mesh(new THREE.PlaneGeometry(0.85, 0.45), MAT.carGlass);
+    swRear.position.set(side*(bW/2-0.02), liftY+bH+cabH*0.5, -0.55);
+    swRear.rotation.y = side*PI/2;
+    car.add(swRear);
+    // B-pillar
+    const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.07, cabH-0.05, 0.07), MAT.carTrim);
+    pillar.position.set(side*(bW/2-0.01), liftY+bH+cabH/2, -0.15);
+    car.add(pillar);
+  });
+
+  // ── A-pillars ──
+  [-1, 1].forEach(side => {
+    const ap = new THREE.Mesh(new THREE.BoxGeometry(0.06, cabH-0.05, 0.06), MAT.carTrim);
+    ap.position.set(side*(bW/2-0.12), liftY+bH+cabH/2, 0.87);
+    ap.rotation.x = -0.12;
+    car.add(ap);
+  });
+  // ── C-pillars ──
+  [-1, 1].forEach(side => {
+    const cp = new THREE.Mesh(new THREE.BoxGeometry(0.06, cabH-0.05, 0.06), MAT.carTrim);
+    cp.position.set(side*(bW/2-0.12), liftY+bH+cabH/2, -1.36);
+    cp.rotation.x = 0.08;
+    car.add(cp);
+  });
+
+  // ── Round headlights (signature Bronco) ──
+  const hlGeo = new THREE.CylinderGeometry(0.16, 0.16, 0.06, 16);
+  [-0.55, 0.55].forEach(sx => {
+    // Chrome bezel ring
+    const bezel = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.19, 0.04, 16), MAT.chrome);
+    bezel.position.set(sx, liftY+bH-0.12, bL/2+0.01);
+    bezel.rotation.x = PI/2;
+    car.add(bezel);
+    // Light
+    const hl = new THREE.Mesh(hlGeo, MAT.headlight);
+    hl.position.set(sx, liftY+bH-0.12, bL/2+0.03);
+    hl.rotation.x = PI/2;
+    car.add(hl);
+  });
+
+  // ── Front turn signals (amber, below headlights) ──
+  [-0.55, 0.55].forEach(sx => {
+    const ts = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.06, 0.05), MAT.turnSignal);
+    ts.position.set(sx, liftY+bH-0.35, bL/2+0.02);
+    car.add(ts);
+  });
+
+  // ── Taillights (rectangular, vertically oriented — classic Bronco) ──
+  const taillightMats = [];
+  [-0.7, 0.7].forEach(sx => {
+    const tlMat = MAT.taillight.clone();
+    taillightMats.push(tlMat);
+    const tl = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.35, 0.05), tlMat);
+    tl.position.set(sx, liftY+bH-0.05, -bL/2-0.01);
+    car.add(tl);
+  });
+
+  // ── Front grille (bold, boxy with horizontal bars) ──
+  const grilleBg = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.45, 0.04), MAT.carTrim);
+  grilleBg.position.set(0, liftY+bH-0.18, bL/2+0.01);
+  car.add(grilleBg);
+  for(let g = -3; g <= 3; g++){
+    const slat = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.018, 0.05), MAT.chrome);
+    slat.position.set(0, liftY+bH-0.18 + g*0.055, bL/2+0.03);
+    car.add(slat);
+  }
+
+  // ═══ FORD OVAL LOGO (front grille + rear) ═══
+  // Build the logo as a blue oval with "FORD" text sprite
+  function buildFordLogo(px, py, pz, facing, scale){
+    const logoGrp = new THREE.Group();
+    // Blue oval background
+    const ovalShape = new THREE.Shape();
+    const ow = 0.28*scale, oh = 0.14*scale;
+    ovalShape.absellipse(0, 0, ow, oh, 0, TAU, false, 0);
+    const ovalGeo = new THREE.ShapeGeometry(ovalShape, 24);
+    const fordBlue = mat(0x003478, {rough:0.2, metal:0.6, emissive:0x001838, emissiveIntensity:0.15});
+    const oval = new THREE.Mesh(ovalGeo, fordBlue);
+    logoGrp.add(oval);
+    // Chrome oval border ring
+    const ringShape = new THREE.Shape();
+    ringShape.absellipse(0, 0, ow+0.02*scale, oh+0.015*scale, 0, TAU, false, 0);
+    const hole = new THREE.Path();
+    hole.absellipse(0, 0, ow-0.01*scale, oh-0.01*scale, 0, TAU, false, 0);
+    ringShape.holes.push(hole);
+    const ringGeo = new THREE.ShapeGeometry(ringShape, 24);
+    const ring = new THREE.Mesh(ringGeo, MAT.chrome);
+    ring.position.z = 0.001;
+    logoGrp.add(ring);
+    // "FORD" text via canvas texture
+    const cvs = document.createElement('canvas');
+    cvs.width = 128; cvs.height = 64;
+    const ctx2 = cvs.getContext('2d');
+    ctx2.clearRect(0, 0, 128, 64);
+    ctx2.fillStyle = '#c0c8d0';
+    ctx2.font = 'bold italic 38px serif';
+    ctx2.textAlign = 'center';
+    ctx2.textBaseline = 'middle';
+    ctx2.fillText('FORD', 64, 34);
+    const tex = new THREE.CanvasTexture(cvs);
+    tex.anisotropy = 4;
+    const txtMat = new THREE.MeshBasicMaterial({map: tex, transparent: true, depthWrite: false});
+    const txtPlane = new THREE.Mesh(new THREE.PlaneGeometry(ow*1.7, oh*1.5), txtMat);
+    txtPlane.position.z = 0.002;
+    logoGrp.add(txtPlane);
+    // Position & orient
+    logoGrp.position.set(px, py, pz);
+    if(facing === 'front') { /* faces +Z by default */ }
+    else if(facing === 'back') { logoGrp.rotation.y = PI; }
+    car.add(logoGrp);
+  }
+  // Front logo — centered on grille
+  buildFordLogo(0, liftY+bH-0.18, bL/2+0.055, 'front', 1.0);
+
+  // ── "BRONCO" letters on hood (embossed look) ──
+  {
+    const cvs = document.createElement('canvas');
+    cvs.width = 256; cvs.height = 48;
+    const ctx2 = cvs.getContext('2d');
+    ctx2.clearRect(0, 0, 256, 48);
+    ctx2.fillStyle = '#c0c8d0';
+    ctx2.font = 'bold 32px sans-serif';
+    ctx2.letterSpacing = '8px';
+    ctx2.textAlign = 'center';
+    ctx2.textBaseline = 'middle';
+    ctx2.fillText('B R O N C O', 128, 26);
+    const tex = new THREE.CanvasTexture(cvs);
+    tex.anisotropy = 4;
+    const broncoMat = new THREE.MeshBasicMaterial({map: tex, transparent: true, depthWrite: false});
+    const broncoPlane = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.18), broncoMat);
+    broncoPlane.position.set(0, liftY+bH+0.09, 1.8);
+    broncoPlane.rotation.x = -PI/2 + 0.02;
+    car.add(broncoPlane);
+  }
+
+  // ── Front bumper (heavy-duty, steel look) ──
+  const fBumper = new THREE.Mesh(new THREE.BoxGeometry(bW+0.15, 0.22, 0.18), MAT.chrome);
+  fBumper.position.set(0, liftY+0.12, bL/2+0.08);
+  car.add(fBumper);
+  // Tow hooks
+  [-0.7, 0.7].forEach(sx => {
+    const hook = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.02, 6, 8, PI), MAT.taillight);
+    hook.position.set(sx, liftY+0.05, bL/2+0.16);
+    car.add(hook);
+  });
+
+  // ── Rear bumper ──
+  const rBumper = new THREE.Mesh(new THREE.BoxGeometry(bW+0.15, 0.22, 0.18), MAT.chrome);
+  rBumper.position.set(0, liftY+0.12, -bL/2-0.08);
+  car.add(rBumper);
+
+  // ── Spare tire on rear (classic Bronco swing-gate) ──
+  {
+    const spareTire = new THREE.Mesh(new THREE.TorusGeometry(tireR, tireT, 10, 18), MAT.tire);
+    spareTire.position.set(0, liftY+bH*0.5+0.15, -bL/2-0.22);
+    car.add(spareTire);
+    const spareRim = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.26, 0.16, 14), MAT.tireRim);
+    spareRim.position.copy(spareTire.position);
+    spareRim.rotation.x = PI/2;
+    car.add(spareRim);
+    const spareHub = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.18, 8), MAT.chrome);
+    spareHub.position.copy(spareTire.position);
+    spareHub.rotation.x = PI/2;
+    car.add(spareHub);
+    // Tire cover (body-colored disc)
+    const cover = new THREE.Mesh(new THREE.CircleGeometry(tireR+tireT-0.02, 24), bodyMat);
+    cover.position.set(0, liftY+bH*0.5+0.15, -bL/2-0.32);
+    cover.rotation.y = PI;
+    car.add(cover);
+  }
+
+  // ── License plates (with random plate number) ──
+  {
+    const letters = 'ABCDEFGHJKLMNPRSTUVWXYZ';
+    const plateNum = letters[Math.random()*letters.length|0] + letters[Math.random()*letters.length|0] + letters[Math.random()*letters.length|0]
+      + '-' + String(Math.random()*9000+1000|0);
+    function makePlateTexture(){
+      const c = document.createElement('canvas'); c.width = 256; c.height = 128;
+      const g = c.getContext('2d');
+      g.fillStyle = '#e8e4d0'; g.fillRect(0,0,256,128);
+      // Border
+      g.strokeStyle = '#223388'; g.lineWidth = 6; g.strokeRect(6,6,244,116);
+      // State text
+      g.fillStyle = '#556688'; g.font = 'bold 18px sans-serif'; g.textAlign = 'center';
+      g.fillText('NEW YORK', 128, 30);
+      // Plate number
+      g.fillStyle = '#1a2255'; g.font = 'bold 48px monospace'; g.textAlign = 'center';
+      g.fillText(plateNum, 128, 82);
+      // Bottom text
+      g.fillStyle = '#556688'; g.font = '14px sans-serif';
+      g.fillText('THE EMPIRE STATE', 128, 112);
+      const tex = new THREE.CanvasTexture(c); tex.anisotropy = 4;
+      return new THREE.MeshStandardMaterial({map: tex, roughness: 0.7, metalness: 0.1});
+    }
+    const lpGeo = new THREE.PlaneGeometry(0.42, 0.2);
+    const fpPlate = new THREE.Mesh(lpGeo, makePlateTexture());
+    fpPlate.position.set(0, liftY+0.22, bL/2+0.18);
+    car.add(fpPlate);
+    const rpPlate = new THREE.Mesh(lpGeo, makePlateTexture());
+    rpPlate.position.set(0, liftY+0.22, -bL/2-0.38);
+    rpPlate.rotation.y = PI;
+    car.add(rpPlate);
+  }
+
+  // ── Side mirrors (chunky, body-colored) ──
+  [-1, 1].forEach(side => {
+    const mirrorArm = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.05, 0.05), MAT.carTrim);
+    mirrorArm.position.set(side*(bW/2+0.1), liftY+bH+0.35, 0.65);
+    car.add(mirrorArm);
+    const mirrorHead = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.12, 0.16), bodyMat);
+    mirrorHead.position.set(side*(bW/2+0.2), liftY+bH+0.35, 0.65);
+    car.add(mirrorHead);
+    const mirrorGlass = new THREE.Mesh(new THREE.PlaneGeometry(0.08, 0.10), MAT.carGlass);
+    mirrorGlass.position.set(side*(bW/2+0.25), liftY+bH+0.35, 0.65);
+    mirrorGlass.rotation.y = side*PI/2;
+    car.add(mirrorGlass);
+  });
+
+  // ── Door seams (2 doors per side) ──
+  [-1, 1].forEach(side => {
+    const seamF = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.85, 0.01), MAT.carTrim);
+    seamF.position.set(side*(bW/2+0.005), liftY+bH/2+0.05, 0.45);
+    car.add(seamF);
+    const seamR = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.85, 0.01), MAT.carTrim);
+    seamR.position.set(side*(bW/2+0.005), liftY+bH/2+0.05, -0.6);
+    car.add(seamR);
+    // Door handles
+    const hF = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.04, 0.12), MAT.chrome);
+    hF.position.set(side*(bW/2+0.01), liftY+bH-0.05, 0.3);
+    car.add(hF);
+    const hR = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.04, 0.12), MAT.chrome);
+    hR.position.set(side*(bW/2+0.01), liftY+bH-0.05, -0.45);
+    car.add(hR);
+  });
+
+  // ── Side body trim (protective molding) ──
+  [-1, 1].forEach(side => {
+    const molding = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.08, bL-0.6), MAT.carTrim);
+    molding.position.set(side*(bW/2+0.005), liftY+bH/2, 0);
+    car.add(molding);
+  });
+
+  // ── Dual exhaust pipes ──
+  [-0.45, 0.45].forEach(sx => {
+    const exhaust = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.045, 0.25, 8), MAT.chrome);
+    exhaust.position.set(sx, liftY, -bL/2-0.12);
+    exhaust.rotation.x = PI/2;
+    car.add(exhaust);
+  });
+
+  // ── Antenna (short stubby — modern Bronco style) ──
+  const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.008, 0.3, 5), MAT.carTrim);
+  antenna.position.set(-0.5, roofY+0.18, -0.6);
+  car.add(antenna);
+
+  // ── Running boards / side steps ──
+  [-1, 1].forEach(side => {
+    const step = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.04, 1.8), MAT.carTrim);
+    step.position.set(side*(bW/2+0.08), liftY-0.06, 0);
+    car.add(step);
+  });
+
+  car.scale.set(0.75, 0.75, 0.75);
   car.position.set(x, y, z);
   car.rotation.y = rot;
   scene.add(car);
+
+  // Register as drivable
+  drivableCars.push({
+    group: car, bodyMat, taillightMats,
+    pos: {x, z}, rot,
+    vel: 0, steer: 0, wheelSpin: 0,
+    engineSound: null, engineGain: null, engineFilter: null,
+  });
 }
 
 function buildTree(x, z){
@@ -1364,6 +1740,72 @@ function getNoteTexture(sym){
   return tex;
 }
 const musicNotes = [];
+
+// ── 3D floating song label above musicians ──
+let songLabelSprite = null;
+let songLabelLife = 0;
+const SONG_LABEL_POS = new THREE.Vector3(-0.5, 2.8, -9.5); // above the jazz group
+
+function makeSongTexture(titleText, artistText){
+  const c = document.createElement('canvas');
+  c.width = 512; c.height = 128;
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, 512, 128);
+  // Title
+  ctx.font = 'bold 36px Segoe UI, Tahoma, sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#FFD700';
+  ctx.shadowColor = 'rgba(255,215,0,0.6)'; ctx.shadowBlur = 12;
+  ctx.fillText(titleText, 256, 44);
+  // Artist
+  ctx.font = 'italic 22px Segoe UI, Tahoma, sans-serif';
+  ctx.fillStyle = '#cccccc';
+  ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 6;
+  ctx.fillText(artistText, 256, 90);
+  return new THREE.CanvasTexture(c);
+}
+
+function showSongLabel3D(title, artist){
+  // Remove old sprite if exists
+  if(songLabelSprite){
+    scene.remove(songLabelSprite);
+    songLabelSprite.material.map.dispose();
+    songLabelSprite.material.dispose();
+    songLabelSprite = null;
+  }
+  const tex = makeSongTexture(title, artist);
+  const spMat = new THREE.SpriteMaterial({map: tex, transparent: true, opacity: 0, depthTest: false});
+  songLabelSprite = new THREE.Sprite(spMat);
+  songLabelSprite.position.copy(SONG_LABEL_POS);
+  songLabelSprite.scale.set(3.5, 0.9, 1);
+  scene.add(songLabelSprite);
+  songLabelLife = 4.0; // seconds to display
+}
+
+function tickSongLabel(dt){
+  if(!songLabelSprite || songLabelLife <= 0) return;
+  songLabelLife -= dt;
+  const fadeIn = 0.4, fadeOut = 0.8;
+  let alpha;
+  const total = 4.0;
+  const elapsed = total - songLabelLife;
+  if(elapsed < fadeIn){
+    alpha = elapsed / fadeIn;
+  } else if(songLabelLife < fadeOut){
+    alpha = Math.max(0, songLabelLife / fadeOut);
+  } else {
+    alpha = 1;
+  }
+  songLabelSprite.material.opacity = alpha;
+  // Float gently upward
+  songLabelSprite.position.y += dt * 0.15;
+  if(songLabelLife <= 0){
+    scene.remove(songLabelSprite);
+    songLabelSprite.material.map.dispose();
+    songLabelSprite.material.dispose();
+    songLabelSprite = null;
+  }
+}
 function emitMusicNote(worldPos){
   const sym = NOTE_SYMBOLS[floor(Math.random()*NOTE_SYMBOLS.length)];
   const spriteMat = new THREE.SpriteMaterial({map:getNoteTexture(sym), transparent:true, opacity:1, color:Math.random()>0.5?0xFFD700:0xFFA500});
@@ -1404,6 +1846,29 @@ const jazzPerformers = [];
 const obstacles = [];   // {minX, maxX, minZ, maxZ, topY, type}
 const staticNPCPositions = [];  // {x, z, r} for all NPCs that don't already have collision
 const PLAYER_RADIUS = 0.25;
+
+// ── Car driving system ──
+const drivableCars = [];
+let drivingCar = null;
+let carEnterCooldown = 0;
+const CAR_MAX_SPEED = 12;
+const CAR_ACCEL = 6;
+const CAR_BRAKE = 10;
+const CAR_FRICTION_D = 3;
+const CAR_STEER_SPEED = 2.5;
+const CAR_STEER_RETURN = 4;
+const CAR_MAX_STEER = 0.6;
+const CAR_ENTER_DIST = 3.0;
+
+// ── Instrument case song-skip button in front of jazz musicians ──
+let caseGroup = null;          // the existing instrument case group
+let casePressed = false;
+let caseAnimT = 0;             // 0 = rest, 1 = pressed
+const CASE_POS = {x: -1.5, z: -8.5};  // world position of the case
+const CASE_RADIUS = 0.5;              // activation radius
+const CASE_REST_Y = 0;                // case rest Y
+const CASE_PRESS_Y = -0.04;           // case pressed Y (sinks slightly)
+let caseCooldown = 0;                  // cooldown timer
 
 // ═══════════════════════════════════
 //  SPECTATORS (simple standing figures)
@@ -1623,7 +2088,7 @@ function buildJazzPerformers(){
     staticNPCPositions.push({x: m.x, z: m.z, r: 0.4});
   });
 
-  // Open instrument case on ground (for tips!)
+  // Open instrument case on ground (for tips!) — also acts as song-skip button
   const caseG = new THREE.Group();
   const caseBox = new THREE.Mesh(new THREE.BoxGeometry(0.6,0.08,0.3), mat(0x2c1810));
   caseBox.position.y = 0.04; caseG.add(caseBox);
@@ -1634,9 +2099,18 @@ function buildJazzPerformers(){
     coin.position.set(rand(-0.15,0.15), 0.09, rand(-0.06,0.06));
     coin.rotation.x = PI/2 + rand(-0.3,0.3); caseG.add(coin);
   }
+  // Glowing music-note hint on velvet (subtle pulsing indicator)
+  const hintMat = mat(0xFFD700, {rough:0.5, emissive:0xFFD700, emissiveIntensity:0.3, transparent:true, opacity:0.6});
+  const hintNote = new THREE.Mesh(new THREE.SphereGeometry(0.03, 6, 5), hintMat);
+  hintNote.position.set(0, 0.1, 0);
+  hintNote.scale.set(1, 0.6, 1);
+  caseG.add(hintNote);
+  caseG.userData.hintMat = hintMat;
+
   caseG.position.set(-1.5, 0, -8.5);
   caseG.rotation.y = 0.5;
   scene.add(caseG);
+  caseGroup = caseG;  // store reference for interaction
 }
 
 // ═══════════════════════════════════
@@ -2053,10 +2527,30 @@ function buildSchoolInterior() {
   landPf.position.set((landMinX + iMaxX)/2, floorY, (stairMinZ + stairMaxZ)/2);
   landPf.receiveShadow = true; scene.add(landPf);
 
+  // ── Underside ceiling slab (prevents visual phasing from ground floor) ──
+  const ceilSlabMat = mat(0xE8DCC8, {rough:0.85});
+  // Main ceiling slab visible from below
+  const ceilSlab1 = new THREE.Mesh(
+    new THREE.BoxGeometry(iMaxX - iMinX, 0.04, iMaxZ - mainPfMinZ), ceilSlabMat
+  );
+  ceilSlab1.position.set((iMinX+iMaxX)/2, floorY - pfThick/2 - 0.02, (mainPfMinZ+iMaxZ)/2);
+  scene.add(ceilSlab1);
+  // Landing ceiling slab
+  const ceilSlab2 = new THREE.Mesh(
+    new THREE.BoxGeometry(iMaxX - landMinX + 0.1, 0.04, stairW + 0.05), ceilSlabMat
+  );
+  ceilSlab2.position.set((landMinX + iMaxX)/2, floorY - pfThick/2 - 0.02, (stairMinZ + stairMaxZ)/2);
+  scene.add(ceilSlab2);
+
   // Register floor obstacles for second floor
   BFP.floorObstacles = [
-    {minX: iMinX, maxX: iMaxX, minZ: mainPfMinZ, maxZ: iMaxZ, topY: floorY, type: 'floor'},
-    {minX: landMinX - 0.05, maxX: iMaxX, minZ: stairMinZ, maxZ: stairMaxZ + 0.05, topY: floorY, type: 'floor'}
+    {minX: iMinX, maxX: iMaxX, minZ: mainPfMinZ, maxZ: iMaxZ, topY: floorY + pfThick/2, type: 'floor'},
+    {minX: landMinX - 0.05, maxX: iMaxX, minZ: stairMinZ, maxZ: stairMaxZ + 0.05, topY: floorY + pfThick/2, type: 'floor'}
+  ];
+  // Ceiling collision from below — blocks jumping through the floor from ground level
+  BFP.ceilingObstacles = [
+    {minX: iMinX, maxX: iMaxX, minZ: mainPfMinZ, maxZ: iMaxZ, ceilY: floorY - pfThick/2},
+    {minX: landMinX - 0.05, maxX: iMaxX, minZ: stairMinZ, maxZ: stairMaxZ + 0.05, ceilY: floorY - pfThick/2}
   ];
 
   // Stairwell railing on second floor edge
@@ -2109,22 +2603,34 @@ function buildSchoolInterior() {
   }
 
   // Reading table (center of second floor)
+  const tableH = 0.55, tableLegH = tableH - 0.04;
   const rTable = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.04, 0.65), woodMat);
-  rTable.position.set(bx - 0.3, floorY + 0.55, bz + 0.6); scene.add(rTable);
-  const tLegGeo = new THREE.BoxGeometry(0.04, 0.5, 0.04);
+  rTable.position.set(bx - 0.3, floorY + tableH, bz + 0.6); scene.add(rTable);
+  const tLegGeo = new THREE.BoxGeometry(0.04, tableLegH, 0.04);
   [[-0.45,-0.28],[-0.45,0.28],[0.45,-0.28],[0.45,0.28]].forEach(([lx,lz]) => {
     const tl = new THREE.Mesh(tLegGeo, dkWoodMat);
-    tl.position.set(bx - 0.3 + lx, floorY + 0.275, bz + 0.6 + lz); scene.add(tl);
+    tl.position.set(bx - 0.3 + lx, floorY + tableLegH/2 + 0.05, bz + 0.6 + lz); scene.add(tl);
   });
 
-  // Chairs around reading table
+  // Chairs around reading table (with legs, properly oriented)
+  const chairSeatH = 0.35;   // seat height above second floor
+  const chairLegH = chairSeatH - 0.02;
   [[-0.65, 0, 0], [0.65, 0, Math.PI], [0, -0.5, Math.PI/2]].forEach(([cx, cz, ry]) => {
     const chG = new THREE.Group();
+    // Seat
     const seat = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.04, 0.28), dkWoodMat);
-    seat.position.y = 0.35; chG.add(seat);
-    const back = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.3, 0.04), dkWoodMat);
-    back.position.set(0, 0.5, -0.14); chG.add(back);
-    chG.position.set(bx - 0.3 + cx, floorY, bz + 0.6 + cz);
+    seat.position.y = chairSeatH; chG.add(seat);
+    // Back rest
+    const back = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.3, 0.035), dkWoodMat);
+    back.position.set(0, chairSeatH + 0.17, -0.12); chG.add(back);
+    // Four chair legs
+    const chLegGeo = new THREE.BoxGeometry(0.025, chairLegH, 0.025);
+    [[-0.11,-0.11],[0.11,-0.11],[-0.11,0.11],[0.11,0.11]].forEach(([lx2,lz2]) => {
+      const cl = new THREE.Mesh(chLegGeo, metalMat);
+      cl.position.set(lx2, chairLegH/2, lz2);
+      chG.add(cl);
+    });
+    chG.position.set(bx - 0.3 + cx, floorY + 0.05, bz + 0.6 + cz);
     chG.rotation.y = ry; scene.add(chG);
   });
 
@@ -4337,65 +4843,74 @@ function animateTurner(model, angle1, angle2, dt, side){
   const ud = model.userData;
   if(!ud.leftArm || !ud.rightArm) return;
 
-  // Which arm holds which rope
+  // Which arm holds which rope (unchanged mapping)
   const arm1 = (side==='L') ? ud.rightArm : ud.leftArm;   // rope1
   const arm2 = (side==='L') ? ud.leftArm  : ud.rightArm;  // rope2
   const fore1 = arm1.children[1];
   const fore2 = arm2.children[1];
 
-  // Get the actual rope endpoint positions that each hand must follow
+  // Get the actual rope endpoint positions — same as rope physics
   const ep1 = getRopeEndpoint(angle1);
   const ep2 = getRopeEndpoint(angle2);
 
   // Shoulder world Y (torso 0.9 + shoulders 0.55)
   const shoulderY = 1.45;
 
-  function aimArmToRope(arm, forearm, ep, armSideSign){
-    // ep.y = world Y of the rope endpoint this hand grips
-    // ep.z = world Z offset (very small, mostly 0)
-    //
-    // We need the arm to reach from the shoulder to the rope endpoint
-    // while staying IN FRONT of the body (never going behind).
-    //
-    // dy = how far below/above the shoulder (negative = below)
-    // The arm hangs at the shoulder and rotates in X to reach the target.
-    
-    const dy = ep.y - shoulderY;  // range: about -0.3 to +0.4
-    const dz = ep.z;              // very small forward offset
+  // Rope phase: sin(angle) drives the pump cycle.
+  // When sin > 0 the rope swings up (hand at top) — grip tight
+  // When sin < 0 the rope swings down (hand at bottom) — release/open hand
+  function aimArmToRope(arm, forearm, ep, armSideSign, ropeAngle){
+    const dy = ep.y - shoulderY;
+    const dz = ep.z;
 
-    // How far the hand needs to reach (in the vertical plane in front of body)
-    // We keep a constant forward reach so the arm stays in front.
-    const forwardReach = 0.2; // always reach slightly forward
+    // Forward reach: arm always stays in front of the body
+    const forwardReach = 0.22;
     const totalDz = forwardReach + dz;
 
-    // Arm pitch: atan2 maps the vertical offset to an angle
-    // When dy < 0 (below shoulder): arm angles down-forward
-    // When dy > 0 (above shoulder): arm angles up-forward
-    // The arm starts pointing down (rotation.x = 0), negative X = forward/up
+    // Upper arm pitch — direct mapping to rope endpoint position
     const targetAngle = Math.atan2(totalDz, -dy);
-    // Clamp so arm stays in front: between -1.8 (forward-down) and -0.4 (forward-up)
-    const armPitch = clamp(-(PI/2) + targetAngle, -1.8, -0.3);
+    // Clamp to natural human shoulder range:
+    //  -1.6 = arm extended forward-down (hands near waist level)
+    //  -0.4 = arm extended forward-up (hands above shoulder)
+    const armPitch = clamp(-(PI/2) + targetAngle, -1.6, -0.35);
 
     arm.rotation.x = armPitch;
-    arm.rotation.z = armSideSign * -0.2; // slight outward spread
+    arm.rotation.z = armSideSign * -0.15; // slight natural outward splay
 
-    // Forearm: bend to fine-tune reaching the exact endpoint
-    // More bent when reaching far down, straighter when up
+    // Forearm: bend tracks the rope phase for a pumping grab/release feel.
+    // phase: 0→1 = rope going up (grip), 1→0 = going down (release)
     if(forearm){
-      const t = (dy + 0.35) / 0.7; // normalize dy to 0..1 range
-      const bend = lerp(-0.5, -0.2, clamp(t, 0, 1));
-      forearm.rotation.x = bend;
+      const phase = sin(ropeAngle);  // -1..1 synced to rope rotation
+
+      // When phase > 0 (rope swinging up): forearm bends inward = gripping
+      // When phase < 0 (rope swinging down): forearm straighter = releasing
+      // Clamp bend to human elbow range: -0.9 (tight bend) to 0.0 (straight)
+      const gripBend = lerp(-0.15, -0.8, clamp((phase + 1) * 0.5, 0, 1));
+      forearm.rotation.x = gripBend;
+
+      // Subtle wrist roll — forearm rotates slightly with the pump
+      forearm.rotation.z = phase * 0.06;
+
+      // Hand squeeze: scale the hand to simulate grip/release
+      const hand = forearm.children[1]; // the hand sphere
+      if(hand){
+        const grip = clamp((phase + 1) * 0.5, 0, 1); // 0=open 1=gripped
+        hand.scale.setScalar(lerp(1.0, 0.8, grip)); // hand closes slightly when gripping
+      }
     }
   }
 
   const outerSign = (side==='L') ? 0.15 : -0.15;
   const innerSign = (side==='L') ? -0.15 : 0.15;
 
-  aimArmToRope(arm1, fore1, ep1, outerSign);
-  aimArmToRope(arm2, fore2, ep2, innerSign);
+  aimArmToRope(arm1, fore1, ep1, outerSign, angle1);
+  aimArmToRope(arm2, fore2, ep2, innerSign, angle2);
 
-  // Slight body sway
-  ud.torso.rotation.z = sin(angle1*0.5)*0.02;
+  // Body sway synced to the average rope pump — subtle weight shift
+  const avgPhase = (sin(angle1) + sin(angle2)) * 0.5;
+  ud.torso.rotation.z = avgPhase * 0.025;
+  // Slight forward lean when pumping down
+  ud.torso.rotation.x = abs(cos(angle1)) * 0.03;
 }
 
 function getRopeEndpoint(angle, height=HAND_HEIGHT){
@@ -4680,6 +5195,17 @@ function showScoreScreen(){
 
 function showMenu(){
   state = 'menu';
+  // Exit car if driving
+  if(drivingCar){
+    if(drivingCar.engineSound){ try{ drivingCar.engineSound.stop(); }catch(e){} drivingCar.engineSound = null; }
+    if(drivingCar.engineGain){ drivingCar.engineGain.disconnect(); drivingCar.engineGain = null; }
+    drivingCar = null;
+    playerModel.visible = true;
+  }
+  const $carHud2 = document.getElementById('carHud');
+  if($carHud2) $carHud2.style.display = 'none';
+  const $carPrompt2 = document.getElementById('carPrompt');
+  if($carPrompt2) $carPrompt2.style.display = 'none';
   $centerMsg.innerHTML = `
     <h1>BLACK JOY</h1>
     <div class="sub">Explore how Black Americans have shaped culture through rhythm and movement</div>
@@ -4868,6 +5394,7 @@ function update(dt){
   gTime += dt; totalTime = gTime;
 
   // Player movement — relative to camera facing direction
+  if(!drivingCar){
   let inputFwd = 0, inputRight = 0;
   if(keys['KeyW'] || keys['ArrowUp'])    inputFwd  += 1;
   if(keys['KeyS'] || keys['ArrowDown'])  inputFwd  -= 1;
@@ -5010,6 +5537,21 @@ function update(dt){
     playerVelY = 0;
   }
 
+  // Ceiling collision — prevent jumping through second floor from below
+  if(BFP.ceilingObstacles && playerVelY > 0){
+    const headY = playerPos.y + PLAYER_HEIGHT;
+    for(const ceil of BFP.ceilingObstacles){
+      if(playerPos.x >= ceil.minX && playerPos.x <= ceil.maxX &&
+         playerPos.z >= ceil.minZ && playerPos.z <= ceil.maxZ){
+        if(headY >= ceil.ceilY && playerPos.y < ceil.ceilY){
+          playerPos.y = ceil.ceilY - PLAYER_HEIGHT;
+          playerVelY = 0;
+          break;
+        }
+      }
+    }
+  }
+
   // Check if inside rope zone
   const prevInside = insideRopes;
   const distFromCenter = Math.sqrt(playerPos.x**2 + playerPos.z**2);
@@ -5023,17 +5565,7 @@ function update(dt){
     setTimeout(() => { $prompt.style.display = 'none'; }, 3000);
   }
 
-  // Rope speed
-  const tgtSpeed = PI * diff.bpm / 60;
-  rSpeed = lerp(rSpeed, tgtSpeed, 0.06);
-
-  // Advance rope angle
-  prevAngle1 = rAngle;
-  rAngle += rSpeed * dt;
-  ropeAngle1 = rAngle;
-  ropeAngle2 = rAngle + PI;
-
-  // Beat detection
+  // Beat detection (rope angle advanced in the always-running block below)
   if(crossedDown(prevAngle1, rAngle)){
     if(insideRopes && state==='jumping'){
       if(!jumpedBeat && graceBeats <= 0){
@@ -5044,26 +5576,15 @@ function update(dt){
     jumpedBeat = false;
   }
 
-  // Rope shape (compute first, then collision test against actual geometry)
-  const ep1L = getRopeEndpoint(ropeAngle1);
-  const ep1R = getRopeEndpoint(ropeAngle1);
-  rope1.computeShape(ropeAngle1, ep1L.y, ep1L.z, ep1R.y, ep1R.z);
-
-  const ep2L = getRopeEndpoint(ropeAngle2);
-  const ep2R = getRopeEndpoint(ropeAngle2);
-  rope2.computeShape(ropeAngle2, ep2L.y, ep2L.z, ep2R.y, ep2R.z);
-
   // Physical rope collision — only feet (lower 0.3m) trigger a tangle
   if(insideRopes && state==='jumping' && !tangled && graceBeats <= 0){
     const px = playerPos.x, py = playerPos.y, pz = playerPos.z;
-    const FEET_HEIGHT = 0.3; // only check ankle/shoe zone
+    const FEET_HEIGHT = 0.3;
     const hit1 = rope1.testPlayerCollision(px, py, pz, PLAYER_BODY_RADIUS, FEET_HEIGHT);
     const hit2 = rope2.testPlayerCollision(px, py, pz, PLAYER_BODY_RADIUS, FEET_HEIGHT);
     const hit = hit1 && hit2 ? (hit1.depth >= hit2.depth ? hit1 : hit2) : (hit1 || hit2);
     const hitRope = hit === hit1 ? rope1 : rope2;
-
     if(hit){
-      // Push rope visually at contact point (bend effect)
       const cp = hit.contactPt;
       const dx = cp.x - px;
       const dz = cp.z - pz;
@@ -5072,14 +5593,6 @@ function update(dt){
       startTangle();
     }
   }
-
-  if(tangled){ rope1.applyTangle(tangleProg); rope2.applyTangle(tangleProg); }
-  rope1.updateVisual();
-  rope2.updateVisual();
-
-  // Turner anim
-  animateTurner(turnerLModel, ropeAngle1, ropeAngle2, dt, 'L');
-  animateTurner(turnerRModel, ropeAngle1, ropeAngle2, dt, 'R');
 
   // Flow decay
   flow = Math.max(0, flow - dt*2);
@@ -5091,6 +5604,272 @@ function update(dt){
   playerModel.rotation.z = jumperLean;
 
   animatePlayer(playerModel, dt);
+  } // end if(!drivingCar)
+
+  // Rope & turner animation (always runs, even while driving)
+  {
+    const tgtSpeed = PI * diff.bpm / 60;
+    rSpeed = lerp(rSpeed, tgtSpeed, 0.06);
+    prevAngle1 = rAngle;
+    rAngle += rSpeed * dt;
+    ropeAngle1 = rAngle;
+    ropeAngle2 = rAngle + PI;
+    const ep1L2 = getRopeEndpoint(ropeAngle1), ep1R2 = getRopeEndpoint(ropeAngle1);
+    rope1.computeShape(ropeAngle1, ep1L2.y, ep1L2.z, ep1R2.y, ep1R2.z);
+    const ep2L2 = getRopeEndpoint(ropeAngle2), ep2R2 = getRopeEndpoint(ropeAngle2);
+    rope2.computeShape(ropeAngle2, ep2L2.y, ep2L2.z, ep2R2.y, ep2R2.z);
+    if(tangled){ rope1.applyTangle(tangleProg); rope2.applyTangle(tangleProg); }
+    rope1.updateVisual(); rope2.updateVisual();
+    animateTurner(turnerLModel, ropeAngle1, ropeAngle2, dt, 'L');
+    animateTurner(turnerRModel, ropeAngle1, ropeAngle2, dt, 'R');
+  }
+
+  // ═══ CAR DRIVING SYSTEM ═══
+  carEnterCooldown = Math.max(0, carEnterCooldown - dt);
+  const $carPrompt = document.getElementById('carPrompt');
+  const $carHud = document.getElementById('carHud');
+  const $carSpeed = document.getElementById('carSpeed');
+
+  if(!drivingCar){
+    // On foot — check proximity to any car
+    let nearestCar = null, nearestDist = CAR_ENTER_DIST;
+    for(const dc of drivableCars){
+      const ddx = playerPos.x - dc.pos.x, ddz = playerPos.z - dc.pos.z;
+      const d = Math.sqrt(ddx*ddx + ddz*ddz);
+      if(d < nearestDist){ nearestDist = d; nearestCar = dc; }
+    }
+    if(nearestCar && carEnterCooldown <= 0){
+      if($carPrompt){ $carPrompt.style.display = ''; $carPrompt.textContent = 'Press E to drive'; }
+      if(pressed('KeyE')){
+        drivingCar = nearestCar;
+        carEnterCooldown = 0.5;
+        playerModel.visible = false;
+        if($carPrompt) $carPrompt.style.display = 'none';
+        if($carHud) $carHud.style.display = '';
+        // Start engine sound
+        if(actx){
+          const eng = actx.createOscillator(); eng.type = 'sawtooth'; eng.frequency.value = 45;
+          const eGain = actx.createGain(); eGain.gain.value = 0;
+          const eFilter = actx.createBiquadFilter(); eFilter.type = 'lowpass'; eFilter.frequency.value = 120;
+          eng.connect(eFilter); eFilter.connect(eGain); eGain.connect(actx.destination); eng.start();
+          drivingCar.engineSound = eng; drivingCar.engineGain = eGain; drivingCar.engineFilter = eFilter;
+        }
+        playerPos.x = drivingCar.pos.x; playerPos.z = drivingCar.pos.z; playerPos.y = 0;
+        playerVelX = 0; playerVelZ = 0; playerVelY = 0; playerAirborne = false;
+        // Push car away from any nearby parked cars on entry
+        for(const oth of drivableCars){
+          if(oth === drivingCar) continue;
+          const dx0 = drivingCar.pos.x - oth.pos.x, dz0 = drivingCar.pos.z - oth.pos.z;
+          const d0 = Math.sqrt(dx0*dx0 + dz0*dz0);
+          if(d0 < 4.0 && d0 > 0.01){
+            const push0 = (4.0 - d0);
+            drivingCar.pos.x += (dx0/d0)*push0;
+            drivingCar.pos.z += (dz0/d0)*push0;
+          }
+        }
+        drivingCar.driveGrace = 1.0; // 1s grace: collisions won't kill velocity
+        // Snap camera behind car instantly so there's no lerp shake
+        camYaw = drivingCar.rot + PI;
+        camPitch = 0.3;
+        camSmoothPos = null; // reset smooth pos so it re-inits at desired spot
+        if(state === 'jumping'){ state = 'freeroam'; insideRopes = false; }
+      }
+    } else {
+      if($carPrompt) $carPrompt.style.display = 'none';
+    }
+  } else {
+    // Driving
+    const dc = drivingCar;
+    if($carHud) $carHud.style.display = '';
+    if($carPrompt) $carPrompt.style.display = 'none';
+
+    // Exit car
+    if(pressed('KeyE') && carEnterCooldown <= 0){
+      const exitX = dc.pos.x + cos(dc.rot) * 1.5;
+      const exitZ = dc.pos.z - sin(dc.rot) * 2.0;
+      playerPos.set(exitX, 0, exitZ); playerVelX = 0; playerVelZ = 0; playerYaw = dc.rot;
+      playerModel.visible = true;
+      if($carHud) $carHud.style.display = 'none';
+      carEnterCooldown = 0.5;
+      if(dc.engineSound){ try{ dc.engineSound.stop(); }catch(e){} dc.engineSound = null; }
+      if(dc.engineGain){ dc.engineGain.disconnect(); dc.engineGain = null; }
+      drivingCar = null;
+    } else {
+      // Car controls
+      let accelIn = 0, brakeIn = 0, steerIn = 0;
+      if(keys['KeyW'] || keys['ArrowUp']) accelIn = 1;
+      if(keys['KeyS'] || keys['ArrowDown']) brakeIn = 1;
+      if(keys['KeyA'] || keys['ArrowLeft']) steerIn = 1;
+      if(keys['KeyD'] || keys['ArrowRight']) steerIn = -1;
+      // Acceleration
+      if(accelIn > 0) dc.vel += CAR_ACCEL * dt;
+      else if(brakeIn > 0){
+        if(dc.vel > 0.5) dc.vel -= CAR_BRAKE * dt;
+        else dc.vel -= CAR_ACCEL * 0.5 * dt;
+      } else {
+        if(abs(dc.vel) > 0.1) dc.vel -= Math.sign(dc.vel) * CAR_FRICTION_D * dt;
+        else dc.vel = 0;
+      }
+      dc.vel = clamp(dc.vel, -CAR_MAX_SPEED * 0.3, CAR_MAX_SPEED);
+      // Steering
+      if(steerIn !== 0) dc.steer += steerIn * CAR_STEER_SPEED * dt;
+      else {
+        if(abs(dc.steer) > 0.01) dc.steer -= Math.sign(dc.steer) * CAR_STEER_RETURN * dt;
+        else dc.steer = 0;
+      }
+      dc.steer = clamp(dc.steer, -CAR_MAX_STEER, CAR_MAX_STEER);
+      // Turn rate
+      const speedFactor = Math.min(1, abs(dc.vel) / 3);
+      dc.rot += dc.steer * speedFactor * 1.2 * dt * Math.sign(dc.vel || 0.001);
+      // Move
+      const cfX = sin(dc.rot), cfZ = cos(dc.rot);
+      dc.pos.x += cfX * dc.vel * dt;
+      dc.pos.z += cfZ * dc.vel * dt;
+      dc.pos.x = clamp(dc.pos.x, -26, 26);
+      dc.pos.z = clamp(dc.pos.z, -26, 26);
+      // Obstacle collision
+      const cosR = cos(dc.rot), sinR = sin(dc.rot);
+      const cHW = 0.83, cHL = 1.65;
+      const corners = [{lx:-cHW,lz:cHL},{lx:cHW,lz:cHL},{lx:-cHW,lz:-cHL},{lx:cHW,lz:-cHL}].map(c => ({
+        x: dc.pos.x + c.lx*cosR - c.lz*sinR, z: dc.pos.z + c.lx*sinR + c.lz*cosR
+      }));
+      // Grace timer — briefly ignore velocity-kill on collisions after entering
+      if(dc.driveGrace > 0) dc.driveGrace -= dt;
+      const graceActive = dc.driveGrace > 0;
+      for(const obs of obstacles){
+        if(obs.type === 'floor' || obs.type === 'bench') continue;
+        for(const cn of corners){
+          if(cn.x >= obs.minX && cn.x <= obs.maxX && cn.z >= obs.minZ && cn.z <= obs.maxZ){
+            const tL = cn.x - obs.minX, tR = obs.maxX - cn.x, tB = cn.z - obs.minZ, tT = obs.maxZ - cn.z;
+            const m = Math.min(tL, tR, tB, tT);
+            if(m === tL) dc.pos.x -= m; else if(m === tR) dc.pos.x += m;
+            else if(m === tB) dc.pos.z -= m; else dc.pos.z += m;
+            if(!graceActive) dc.vel *= 0.3;
+          }
+        }
+      }
+      // Car-car collision
+      for(const other of drivableCars){
+        if(other === dc) continue;
+        const ddx2 = dc.pos.x - other.pos.x, ddz2 = dc.pos.z - other.pos.z;
+        const d2 = Math.sqrt(ddx2*ddx2 + ddz2*ddz2);
+        if(d2 < 3.4 && d2 > 0.01){
+          const push2 = (3.4 - d2) * 0.5;
+          dc.pos.x += (ddx2/d2)*push2; dc.pos.z += (ddz2/d2)*push2;
+          if(abs(dc.vel) > 1){ other.pos.x -= (ddx2/d2)*push2*0.3; other.pos.z -= (ddz2/d2)*push2*0.3;
+            other.group.position.x = other.pos.x; other.group.position.z = other.pos.z; }
+          if(!graceActive) dc.vel *= 0.5;
+        }
+      }
+      // Apply to group
+      dc.group.position.x = dc.pos.x; dc.group.position.z = dc.pos.z;
+      dc.group.rotation.y = dc.rot;
+      // Body lean
+      dc.group.rotation.z = -dc.steer * speedFactor * 0.04;
+      dc.group.rotation.x = accelIn > 0 ? lerp(dc.group.rotation.x, -0.015, dt*3) :
+        brakeIn > 0 ? lerp(dc.group.rotation.x, 0.02, dt*3) : lerp(dc.group.rotation.x, 0, dt*3);
+      // Brake lights
+      if(dc.taillightMats){
+        const braking = brakeIn > 0;
+        for(const m of dc.taillightMats){
+          m.emissiveIntensity = braking ? 2.0 : 0.5;
+          m.emissive.setHex(braking ? 0xff0000 : 0xcc0000);
+        }
+      }
+      // Wheel spin
+      dc.wheelSpin += dc.vel * dt * 3;
+      // Engine sound
+      if(dc.engineSound && dc.engineGain){
+        const rpmF = abs(dc.vel) / CAR_MAX_SPEED;
+        dc.engineSound.frequency.value = 35 + rpmF * 80;
+        dc.engineGain.gain.value = clamp(0.015 + rpmF * 0.06, 0, 0.08);
+        if(dc.engineFilter) dc.engineFilter.frequency.value = 80 + rpmF * 200;
+      }
+      // Exhaust particles
+      if(accelIn > 0 && Math.random() < dt * 5){
+        const exX = dc.pos.x - cfX*1.65 + cosR*0.38, exZ = dc.pos.z - cfZ*1.65 + sinR*0.38;
+        emit3D(new THREE.Vector3(exX, 0.3, exZ), 1, {
+          colors:[0x555555,0x666666,0x444444], vyMin:0.2, vyMax:0.6,
+          vxMin:-0.3,vxMax:0.3, vzMin:-0.3,vzMax:0.3, grav:-0.5, decayMin:0.02, decayMax:0.04, rMin:0.3, rMax:0.7
+        });
+      }
+      // Tire dust on hard turns
+      if(abs(dc.steer) > 0.4 && abs(dc.vel) > 5 && Math.random() < dt * 3){
+        const rX = dc.pos.x - cfX*1.1, rZ = dc.pos.z - cfZ*1.1;
+        emit3D(new THREE.Vector3(rX, 0.15, rZ), 2, DUST_CFG);
+      }
+      // Player pos tracks car
+      playerPos.x = dc.pos.x; playerPos.z = dc.pos.z; playerPos.y = 0;
+      // Camera smoothly follows behind car
+      {
+        let targetYaw = dc.rot + PI;
+        let diff = targetYaw - camYaw;
+        // Normalize diff to [-PI, PI]
+        diff = ((diff + PI) % TAU + TAU) % TAU - PI;
+        camYaw += diff * Math.min(1, 4.0 * dt);
+      }
+      // HUD speed
+      if($carSpeed) $carSpeed.textContent = Math.round(abs(dc.vel) * 2.24);
+    }
+  }
+
+  // ── Instrument case song-skip: collision, animation, song change ──
+  if(caseGroup && (state === 'freeroam' || state === 'jumping')){
+    caseCooldown = Math.max(0, caseCooldown - dt);
+    const pdx = playerPos.x - CASE_POS.x;
+    const pdz = playerPos.z - CASE_POS.z;
+    const caseDist = Math.sqrt(pdx*pdx + pdz*pdz);
+    const onCase = caseDist < CASE_RADIUS && playerPos.y < 0.3;
+
+    if(onCase && !casePressed && caseCooldown <= 0){
+      // Player stepped/landed on the case — trigger!
+      casePressed = true;
+      caseCooldown = 1.5;
+      // Play next song
+      if(jazzPlaying){
+        playJazzTrack(jazzTrackIdx + 1);
+      } else {
+        startJazz();
+      }
+      // Click sfx
+      if(actx){
+        const t = actx.currentTime;
+        const clickG = actx.createGain();
+        clickG.gain.setValueAtTime(0.25, t);
+        clickG.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+        clickG.connect(actx.destination);
+        const sr = actx.sampleRate, n = (sr * 0.04)|0;
+        const buf = actx.createBuffer(1, n, sr), d = buf.getChannelData(0);
+        for(let i=0;i<n;i++) d[i] = (Math.random()*2-1) * Math.exp(-i/(sr*0.006));
+        const s = actx.createBufferSource(); s.buffer = buf;
+        const f = actx.createBiquadFilter(); f.type='bandpass'; f.frequency.value=800;
+        s.connect(f); f.connect(clickG); s.start();
+        const o = actx.createOscillator(); o.frequency.value = 120; o.type = 'sine';
+        const og = actx.createGain(); og.gain.setValueAtTime(0.15, t); og.gain.exponentialRampToValueAtTime(0.001, t+0.1);
+        o.connect(og); og.connect(actx.destination); o.start(t); o.stop(t+0.1);
+      }
+      // Spawn burst of music notes above the case
+      const burstPos = new THREE.Vector3(CASE_POS.x, 0.5, CASE_POS.z);
+      for(let i=0; i<6; i++) emitMusicNote(burstPos.clone().add(new THREE.Vector3(rand(-0.3,0.3), rand(0,0.3), rand(-0.3,0.3))));
+    }
+    if(!onCase && casePressed && caseCooldown < 1.0){
+      casePressed = false;
+    }
+
+    // Animate case press/release (sinks down and springs back)
+    const targetT = casePressed ? 1 : 0;
+    caseAnimT = lerp(caseAnimT, targetT, dt * (casePressed ? 18 : 8));
+    caseGroup.position.y = lerp(CASE_REST_Y, CASE_PRESS_Y, caseAnimT);
+    // Slight scale squash when pressed
+    caseGroup.scale.y = lerp(1.0, 0.7, caseAnimT);
+    // Hint note glow pulse
+    if(caseGroup.userData.hintMat){
+      const pulse = 0.3 + sin(performance.now() * 0.004) * 0.2;
+      caseGroup.userData.hintMat.emissiveIntensity = casePressed ? 0.8 : pulse;
+      caseGroup.userData.hintMat.opacity = casePressed ? 1.0 : 0.4 + sin(performance.now() * 0.003) * 0.2;
+    }
+  }
+
   // Jazz performer sway animation (tempo-synced) + music note particles
   const jazzBPM = currentJazzBPM || 80;
   const swaySpeed = PI * jazzBPM / 60;
@@ -5128,6 +5907,7 @@ function update(dt){
     }
   });
   tickMusicNotes(dt);
+  tickSongLabel(dt);
   animateMarch(dt);
   animateBreakfast(dt);
   animateHopscotch(dt);
